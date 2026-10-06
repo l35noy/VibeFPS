@@ -6,6 +6,7 @@ extends CharacterBody3D
 @export var mouse_sensitivity: float = 0.002
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+var _jump_queued: bool = false
 
 @onready var _camera: Camera3D = $Camera3D
 
@@ -25,6 +26,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		)
 	elif event.is_action_pressed("ui_cancel"):
 		_toggle_mouse_capture()
+	elif event is InputEventKey and event.is_action_pressed("jump"):
+		_jump_queued = true
 	elif event is InputEventMouseButton and event.pressed:
 		var button := event as InputEventMouseButton
 		if button.button_index == MOUSE_BUTTON_LEFT:
@@ -44,8 +47,10 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y -= _gravity * delta
 
-	if is_on_floor() and Input.is_action_just_pressed("jump"):
-		velocity.y = jump_velocity
+	if _jump_queued:
+		_jump_queued = false
+		if is_on_floor():
+			velocity.y = jump_velocity
 
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
