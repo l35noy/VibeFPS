@@ -1,10 +1,9 @@
 extends SceneTree
 
-## Headless smoke-test harness for VibeFPS.
-## Drives the player with simulated input and reports anomalies.
-## Run: godot --headless --path . --script res://tests/headless_smoke.gd
-
-const FLOOR_EXTENT := 10.0
+## Movement harness for VibeFPS: locomotion, jumping and mouse look.
+## Drives the real player node with simulated input and reports anomalies.
+## Run: godot --headless --path . --script res://tests/movement.gd
+##      .\tools\run_checks.ps1 movement
 
 var _failures: PackedStringArray = []
 var _warnings: PackedStringArray = []
@@ -37,7 +36,7 @@ func _physics_frames(count: int) -> void:
 
 
 func _initialize() -> void:
-	print("=== VibeFPS headless smoke test ===")
+	print("=== VibeFPS movement test ===")
 	var packed: PackedScene = load("res://main.tscn")
 	if packed == null:
 		print("FATAL: cannot load res://main.tscn")
@@ -54,8 +53,6 @@ func _initialize() -> void:
 		quit(1)
 		return
 
-	_test_scene_setup(world, player)
-	await _test_sky_background(world)
 	await _test_idle(player)
 	await _test_walk_forward(player)
 	await _test_strafe(player)
@@ -63,8 +60,6 @@ func _initialize() -> void:
 	await _test_jump(player)
 	await _test_jump_height(player)
 	await _test_jump_action_event(player)
-	await _test_fall_off_edge(player)
-	await _test_fall_recovery(player)
 	await _test_mouse_look(player)
 	await _test_mouse_uncaptured(player)
 	await _test_no_stuck_velocity(player)
@@ -74,32 +69,6 @@ func _initialize() -> void:
 	for f in _failures:
 		print("  FAILURE: %s" % f)
 	quit(1 if _failures.size() > 0 else 0)
-
-
-func _test_scene_setup(world: Node3D, player: CharacterBody3D) -> void:
-	print("-- scene setup")
-	_check(world.get_node_or_null("Floor") != null, "Floor node exists")
-	_check(world.get_node_or_null("WorldEnvironment") != null, "WorldEnvironment exists")
-	var cam := player.get_node_or_null("Camera3D") as Camera3D
-	_check(cam != null and cam.current, "Camera3D exists and is current")
-	if cam != null and cam.current and cam.global_position.y < 1.5:
-		_warn("camera sits below expected eye height (%.2f)" % cam.global_position.y)
-
-
-func _test_sky_background(world: Node3D) -> void:
-	print("-- sky: environment must render the sky, not a black clear color")
-	var we := world.get_node_or_null("WorldEnvironment") as WorldEnvironment
-	if we == null or we.environment == null:
-		_failures.append("WorldEnvironment has no Environment resource")
-		print("  [FAIL] WorldEnvironment has no Environment resource")
-		_checks += 1
-		return
-	var env := we.environment
-	_check(env.background_mode == Environment.BG_SKY, "background_mode is BG_SKY (2)",
-		"(got %d)" % env.background_mode)
-	_check(env.sky != null, "environment has a Sky resource")
-	if env.sky != null:
-		_check(env.sky.sky_material != null, "sky has a sky_material")
 
 
 func _test_idle(player: CharacterBody3D) -> void:
@@ -225,38 +194,6 @@ func _test_jump_action_event(player: CharacterBody3D) -> void:
 		"(vy=%.2f)" % player.velocity.y)
 	await _physics_frames(240)
 	_check(player.is_on_floor(), "landed back on floor after action jump")
-
-
-func _test_fall_off_edge(player: CharacterBody3D) -> void:
-	print("-- fall off edge: must NOT sink through world")
-	player.global_position = Vector3(1000, 50, 1000)
-	player.velocity = Vector3.ZERO
-	await _physics_frames(240)
-	var y := player.global_position.y
-	print("    y after 2s of falling = %.2f" % y)
-	_check(y > -50.0, "player did not fall out of the world",
-		"(y=%.2f)" % y)
-
-
-func _test_fall_recovery(player: CharacterBody3D) -> void:
-	print("-- fall recovery: falling past the kill plane respawns at spawn")
-	var spawn := Vector3.ZERO
-	player.global_position = Vector3(0, 5, 40)
-	player.velocity = Vector3.ZERO
-	var respawned := false
-	for i in 600:
-		await physics_frame
-		if player.global_position.distance_to(spawn) < 2.0:
-			respawned = true
-			break
-	print("    y after fall = %.2f, respawned=%s" % [player.global_position.y, respawned])
-	_check(respawned, "player respawned near the spawn point after falling out of world")
-	await _physics_frames(30)
-	_check(player.is_on_floor(), "respawned player is on the floor again")
-	_check(player.global_position.y > -1.0, "respawned player is at platform height",
-		"(y=%.2f)" % player.global_position.y)
-	_check(player.velocity.length() < 0.01, "velocity zeroed on respawn",
-		"(v=%.3f, %.3f, %.3f)" % [player.velocity.x, player.velocity.y, player.velocity.z])
 
 
 func _test_mouse_look(player: CharacterBody3D) -> void:
