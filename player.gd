@@ -1,6 +1,8 @@
 extends CharacterBody3D
 
 @export var speed: float = 5.0
+@export var jump_velocity: float = 5.0
+@export var sprint_multiplier: float = 1.8
 @export var mouse_sensitivity: float = 0.002
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -42,10 +44,17 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y -= _gravity * delta
 
+	if is_on_floor() and Input.is_action_just_pressed("jump"):
+		velocity.y = jump_velocity
+
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
 
-	velocity.x = direction.x * speed
-	velocity.z = direction.z * speed
+	var current_speed := speed
+	if Input.is_action_pressed("sprint") and input_dir != Vector2.ZERO:
+		current_speed *= sprint_multiplier
+
+	velocity.x = direction.x * current_speed
+	velocity.z = direction.z * current_speed
 
 	move_and_slide()
