@@ -4,19 +4,28 @@ extends CharacterBody3D
 @export var jump_velocity: float = 5.0
 @export var sprint_multiplier: float = 1.8
 @export var mouse_sensitivity: float = 0.002
+@export var fall_limit: float = -50.0
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _jump_queued: bool = false
+var _spawn_transform: Transform3D = Transform3D.IDENTITY
 
 @onready var _camera: Camera3D = $Camera3D
 
 
 func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	set_spawn_transform()
+
+
+func set_spawn_transform() -> void:
+	_spawn_transform = global_transform
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			return
 		var motion := event as InputEventMouseMotion
 		rotate_y(-motion.relative.x * mouse_sensitivity)
 		_camera.rotation.x = clampf(
@@ -26,7 +35,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		)
 	elif event.is_action_pressed("ui_cancel"):
 		_toggle_mouse_capture()
-	elif event is InputEventKey and event.is_action_pressed("jump"):
+	elif event.is_action_pressed("jump"):
 		_jump_queued = true
 	elif event is InputEventMouseButton and event.pressed:
 		var button := event as InputEventMouseButton
@@ -63,3 +72,13 @@ func _physics_process(delta: float) -> void:
 	velocity.z = direction.z * current_speed
 
 	move_and_slide()
+
+	if global_position.y < fall_limit:
+		_respawn()
+
+
+func _respawn() -> void:
+	global_transform = _spawn_transform
+	velocity = Vector3.ZERO
+	_jump_queued = false
+	_camera.rotation.x = 0.0
