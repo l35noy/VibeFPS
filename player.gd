@@ -5,6 +5,15 @@ extends CharacterBody3D
 @export var sprint_multiplier: float = 1.8
 @export var mouse_sensitivity: float = 0.002
 @export var fall_limit: float = -50.0
+## Наземное ускорение и торможение в м/с². Горизонтальная скорость не
+## присваивается, а накапливается за кадры, поэтому разгон и остановка
+## конечны по времени; мгновенное присвоение читалось бы как телепортация,
+## а разворот направления — как щелчок. 20 м/с² даёт разгон 5 м/с за 0.25 с.
+@export var ground_acceleration: float = 20.0
+## Доля наземного ускорения, доступная в воздухе. Та же механика накопления,
+## но с пониженным коэффициентом: полный воздушный контроль делал бы прыжок
+## избыточно управляемым, нулевой — неуправляемым, 0.4 — компромисс между ними.
+@export var air_control: float = 0.4
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _jump_queued: bool = false
@@ -122,8 +131,17 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_pressed("sprint") and input_dir != Vector2.ZERO:
 			current_speed *= sprint_multiplier
 
-		velocity.x = direction.x * current_speed
-		velocity.z = direction.z * current_speed
+		# Скорость накапливается через move_toward, а не присваивается: за
+		# один кадр она меняется максимум на ускорение*delta, поэтому разгон
+		# и торможение (цель — ноль при отпущном вводе) конечны по времени,
+		# а в пределе move_toward доезжает ровно до цели — установившаяся
+		# скорость равна заявленной, остаточного скольжения нет. В воздухе
+		# та же механика с air_control: управление слабее, но не отключено.
+		var acceleration := ground_acceleration
+		if not is_on_floor():
+			acceleration *= air_control
+		velocity.x = move_toward(velocity.x, direction.x * current_speed, acceleration * delta)
+		velocity.z = move_toward(velocity.z, direction.z * current_speed, acceleration * delta)
 	else:
 		# Горизонтальная скорость обнуляется явно, а не остаётся от прошлого
 		# кадра: иначе персонаж едет по инерции при свободном курсоре.

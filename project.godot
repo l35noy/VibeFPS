@@ -14,6 +14,8 @@ config/name="VibeFPS"
 run/main_scene="uid://jyplrr3l"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
+; Без жёсткого ограничения кадров (0 = лимит FPS снят, см. CHECKLIST §1A).
+run/max_fps=0
 
 [display]
 
@@ -23,6 +25,8 @@ window/size/mode=3
 window/size/resizable=false
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+; Синхронизация кадров с монитором включена (1 = Enabled), CHECKLIST §1A.
+window/vsync/vsync_mode=1
 
 [input]
 
@@ -91,3 +95,5 @@ common/physics_ticks_per_second=120
 
 rendering_device/driver.windows="d3d12"
 anti_aliasing/quality/msaa_3d=2
+; Масштаб 3D-буфера 1.0 — рендер в нативное разрешение, CHECKLIST §1A.
+scaling_3d/scale=1.0

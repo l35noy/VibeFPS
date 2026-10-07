@@ -53,7 +53,7 @@
 
 ### 5.1 Активный инструментарий
 
-- Godot 4.7.2 — `E:\Godot\Godot_v4.7.2-stable_win64.exe`
+- Godot 4.7.2 — путь к бинарнику задан единой точкой правды: `$GodotBin` в `tools/run_checks.ps1`
 - GDScript
 - OpenCode (ведущий агент `lead` + субагенты `general` / `explore`)
 - Space Bunny Free (`opencode/space-bunny-free`)

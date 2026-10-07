@@ -51,6 +51,11 @@ const _STAND_Y := 1.0
 ## distance. Used as a respawn detector: _respawn() is a teleport, never motion.
 const _TELEPORT_M := 1.0
 
+## Битовые маски слоёв из [layer_names] project.godot: слой N = 2^(N-1),
+## поэтому 1 world = 1, 2 player_body = 2.
+const _LAYER_WORLD := 1
+const _LAYER_PLAYER_BODY := 2
+
 var _failures: PackedStringArray = []
 var _warnings: PackedStringArray = []
 var _checks := 0
@@ -120,6 +125,8 @@ func _initialize() -> void:
 	print("    floor top y=%.1f, off-platform threshold y=%.1f, kill plane y=%.1f" % [
 		_FLOOR_TOP_Y, _OFF_PLATFORM_Y, _fall_limit(player)])
 
+	await _test_collision_layers(world, player)
+
 	_check(player.get_script() == _PlayerProbe,
 		"precondition: the gate probe is installed on the scene Player")
 	_check(float(player.get("sprint_multiplier")) * float(player.get("speed")) > 8.0,
@@ -134,6 +141,46 @@ func _initialize() -> void:
 	for f in _failures:
 		print("  FAILURE: %s" % f)
 	quit(1 if _failures.size() > 0 else 0)
+
+
+## Проверка слоёв коллизий сцен (закрывает гэп HANDOFF §8: чека, ловящего
+## регрессию слоёв, раньше не было).
+##
+## Слои объявлены в [layer_names] project.godot (1 world, 2 player_body и т.д.)
+## и расставлены на игровых телах, но ничто не мешает при правке main.tscn или
+## player.tscn молча вернуть их к значениям по умолчанию. Такие регрессии не
+## рушат существующие проверки явно: сдвиг слоя пола с 1 на 2, например, тихо
+## ломает урон и снаряды (игрок с маской 1 перестаёт видеть пол), а проверка
+## «игрок не провалился» ловит только обнуление маски. Поэтому здесь
+## проверяются сами битовые маски, а не их побочные эффекты.
+##
+## _ready() не синхронный относительно instantiate(): готовность узла ждётся
+## явно через is_node_ready(), а не предполагается по факту инстанцирования.
+func _test_collision_layers(world: Node3D, player: CharacterBody3D) -> void:
+	print("-- collision layers: Floor=layer 1 (world), Player=layer 2/mask 1 (player_body -> world)")
+	for i in 120:
+		if world.is_node_ready():
+			break
+		await physics_frame
+	_check(world.is_node_ready(),
+		"precondition: main.tscn is instantiated and node-ready")
+
+	var floor_body := world.get_node_or_null("Floor") as StaticBody3D
+	_check(floor_body != null, "precondition: Floor (StaticBody3D) exists in main.tscn")
+	if floor_body == null:
+		return
+	_check(floor_body.collision_layer == _LAYER_WORLD,
+		"Floor sits on collision layer 1 (world)",
+		"(collision_layer=%d, expected %d)" % [
+			floor_body.collision_layer, _LAYER_WORLD])
+	_check(player.collision_layer == _LAYER_PLAYER_BODY,
+		"player body sits on collision layer 2 (player_body)",
+		"(collision_layer=%d, expected %d)" % [
+			player.collision_layer, _LAYER_PLAYER_BODY])
+	_check(player.collision_mask == _LAYER_WORLD,
+		"player body collides with the world (mask = layer 1)",
+		"(collision_mask=%d, expected %d)" % [
+			player.collision_mask, _LAYER_WORLD])
 
 
 ## Sprint traverse across the real 20x20 floor.

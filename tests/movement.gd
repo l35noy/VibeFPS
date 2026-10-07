@@ -80,6 +80,21 @@ func _xz_distance(player: CharacterBody3D, from: Vector3) -> float:
 		player.global_position.z - from.z).length()
 
 
+func _xz_speed(player: CharacterBody3D) -> float:
+	return Vector2(player.velocity.x, player.velocity.z).length()
+
+
+## Declared values are read from the node instead of hard-coded: the exports
+## are the contract under test, and a hard-coded 5.0 would keep passing after
+## someone retunes speed in the inspector.
+func _declared_walk_speed(player: CharacterBody3D) -> float:
+	return float(player.get("speed"))
+
+
+func _declared_sprint_speed(player: CharacterBody3D) -> float:
+	return float(player.get("speed")) * float(player.get("sprint_multiplier"))
+
+
 func _key_event(action: String) -> InputEventKey:
 	var ev := InputEventKey.new()
 	ev.physical_keycode = KEY_SPACE if action == "jump" else 0
@@ -142,6 +157,9 @@ func _initialize() -> void:
 	await _test_walk_forward(player)
 	await _test_strafe(player)
 	await _test_sprint(player)
+	await _test_ground_acceleration(player)
+	await _test_braking(player)
+	await _test_air_control(player)
 	await _test_jump(player)
 	await _test_jump_height(player)
 	await _test_jump_action_event(player)
@@ -201,11 +219,19 @@ func _test_walk_forward(player: CharacterBody3D) -> void:
 	var start := player.global_position
 	Input.action_press("move_forward")
 	await _physics_frames(120)
+	# Sampled while the key is still held: this is the settled speed the
+	# invariant talks about, not the distance average, which an acceleration
+	# ramp necessarily pulls below speed * elapsed time.
+	var held_speed := _xz_speed(player)
 	Input.action_release("move_forward")
 	await _physics_frames(5)
 	var dist := _xz_distance(player, start)
-	# speed 5 m/s * 1s = 5m expected
-	_check(dist > 4.0 and dist < 6.0, "walk distance ~5m", "(got %.2f m)" % dist)
+	# speed 5 m/s * 1s = 5 m expected, minus the acceleration ramp of ~0.25 s.
+	_check(dist > 4.0 and dist < 6.0, "walk distance ~5m (ramp included)",
+		"(got %.2f m)" % dist)
+	_check(absf(held_speed - _declared_walk_speed(player)) < 0.01,
+		"settled walk speed equals the declared speed",
+		"(got %.4f, declared %.4f)" % [held_speed, _declared_walk_speed(player)])
 	_check(player.is_on_floor(), "still on floor after walking")
 
 
@@ -240,6 +266,7 @@ func _test_sprint(player: CharacterBody3D) -> void:
 	Input.action_press("move_forward")
 	Input.action_press("sprint")
 	await _physics_frames(120)
+	var sprint_speed := _xz_speed(player)
 	Input.action_release("move_forward")
 	Input.action_release("sprint")
 	await _physics_frames(5)
@@ -247,6 +274,121 @@ func _test_sprint(player: CharacterBody3D) -> void:
 
 	print("    walk=%.2f m, sprint=%.2f m" % [walk_dist, sprint_dist])
 	_check(sprint_dist > walk_dist * 1.3, "sprint meaningfully faster than walk")
+	_check(absf(sprint_speed - _declared_sprint_speed(player)) < 0.01,
+		"settled sprint speed equals declared speed * sprint_multiplier",
+		"(got %.4f, declared %.4f)" % [sprint_speed, _declared_sprint_speed(player)])
+
+
+## Ground acceleration: speed must ramp up over frames, not snap, and must
+## settle exactly on the declared value. The early sample is what separates
+## accumulation from assignment: with instant assignment the very first sample
+## already equals the full speed, and there is nothing to grow between samples.
+func _test_ground_acceleration(player: CharacterBody3D) -> void:
+	print("-- ground acceleration: ramps up over frames, settles on declared speed")
+	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
+	player.global_position = Vector3.ZERO
+	player.velocity = Vector3.ZERO
+	await _physics_frames(60)
+	_check(player.is_on_floor(), "on floor before the acceleration ramp")
+
+	var declared := _declared_walk_speed(player)
+	Input.action_press("move_forward")
+	# 4 frames = 0.033 s; accumulation is allowed to cover ~0.67 m/s, an
+	# instant assignment would already sit at the declared 5 m/s.
+	await _physics_frames(4)
+	var early := _xz_speed(player)
+	_check(early > 0.0, "input starts accelerating the player",
+		"(v=%.3f m/s after 4 frames)" % early)
+	_check(early < declared * 0.5,
+		"speed does not snap to the declared value on the first frames",
+		"(v=%.3f, declared %.3f)" % [early, declared])
+
+	await _physics_frames(20)
+	var later := _xz_speed(player)
+	_check(later > early, "speed keeps growing between samples",
+		"(%.3f -> %.3f m/s)" % [early, later])
+
+	# 90 held frames = 0.75 s, comfortably past the 0.25 s ramp time.
+	await _physics_frames(66)
+	var settled := _xz_speed(player)
+	_check(absf(settled - declared) < 0.01,
+		"settled ground speed equals the declared speed",
+		"(got %.4f, declared %.4f)" % [settled, declared])
+	Input.action_release("move_forward")
+	await _physics_frames(60)
+
+
+## Braking: releasing the input must stop the player completely within a
+## bounded time -- a slow everlasting coast would fail the stop check, and an
+## instant zero would mean velocity was assigned rather than accumulated.
+func _test_braking(player: CharacterBody3D) -> void:
+	print("-- braking: gradual deceleration to a full stop")
+	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
+	player.global_position = Vector3.ZERO
+	player.velocity = Vector3.ZERO
+	await _physics_frames(60)
+	Input.action_press("move_forward")
+	await _physics_frames(90)
+	var before := _xz_speed(player)
+	_check(absf(before - _declared_walk_speed(player)) < 0.01,
+		"precondition: player is at the declared speed before braking",
+		"(v=%.4f)" % before)
+
+	Input.action_release("move_forward")
+	# 3 frames = 0.025 s at 20 m/s^2 shed ~0.5 m/s: still clearly moving.
+	await _physics_frames(3)
+	var coasting := _xz_speed(player)
+	_check(coasting > 2.0,
+		"braking is gradual: still moving a few frames after release",
+		"(v=%.3f after 3 frames)" % coasting)
+
+	# 40 frames = 0.333 s, braking from 5 m/s takes 0.25 s: a finite stop that
+	# leaves no residual sliding.
+	await _physics_frames(37)
+	var stopped := _xz_speed(player)
+	_check(stopped < 0.01,
+		"player stops completely within a bounded time, no residual sliding",
+		"(v=%.4f after 40 frames)" % stopped)
+
+
+## Air control must be the same accumulation as on the ground but weaker: both
+## halves are measured in the identical 15-frame window from rest, so the
+## comparison itself proves the coefficient -- equal gains would mean
+## air_control is ignored, a zero gain would mean airborne input is dead.
+func _test_air_control(player: CharacterBody3D) -> void:
+	print("-- air control: airborne acceleration is weaker than ground acceleration")
+	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
+	player.global_position = Vector3.ZERO
+	player.velocity = Vector3.ZERO
+	await _physics_frames(60)
+	_check(player.is_on_floor(), "on floor before the air control comparison")
+
+	# Ground half: same 15-frame window as the airborne half below.
+	Input.action_press("move_forward")
+	await _physics_frames(15)
+	var ground_gain := _xz_speed(player)
+	Input.action_release("move_forward")
+	await _physics_frames(60)
+	_check(ground_gain > 1.0, "ground half really accelerated (valid comparison)",
+		"(gain=%.3f m/s)" % ground_gain)
+	_check(_xz_speed(player) < 0.01, "back to a full stop before the airborne half",
+		"(v=%.4f)" % _xz_speed(player))
+
+	# Airborne half: jump, wait until clearly off the floor, then the same input.
+	Input.parse_input_event(_key_event("jump"))
+	await _physics_frames(10)
+	_check(not player.is_on_floor(), "airborne for the comparison")
+	Input.action_press("move_forward")
+	await _physics_frames(15)
+	var air_gain := _xz_speed(player)
+	Input.action_release("move_forward")
+	_check(air_gain > 0.0, "airborne input still accelerates the player",
+		"(gain=%.3f m/s)" % air_gain)
+	_check(air_gain < ground_gain * 0.75,
+		"airborne acceleration is weaker than ground acceleration",
+		"(air %.3f vs ground %.3f m/s)" % [air_gain, ground_gain])
+	# Land before the jump tests that follow: the airborne half ends in flight.
+	await _physics_frames(240)
 
 
 func _test_jump(player: CharacterBody3D) -> void:
@@ -377,7 +519,9 @@ func _test_play_input_denied_while_uncaptured(player: CharacterBody3D) -> void:
 	var start := player.global_position
 	Input.action_press("move_forward")
 	Input.action_press("sprint")
-	await _physics_frames(60)
+	# 90 frames = 0.75 s: with acceleration the first 0.45 s is the ramp to
+	# 9 m/s and only ~2.5 m is covered in 0.5 s, below the 3 m threshold.
+	await _physics_frames(90)
 	Input.action_release("move_forward")
 	Input.action_release("sprint")
 	var allowed := _xz_distance(player, start)
