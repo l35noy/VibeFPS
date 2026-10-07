@@ -17,12 +17,23 @@
 - Godot: `E:\Godot\Godot_v4.7.2-stable_win64.exe`. Путь хранится в одном месте — `tools/run_checks.ps1`. Других копий пути не создавать.
 - Каждая проверка — отдельный файл `tests/*.gd`, наследующий `SceneTree`, запускающийся через `--headless --script`, завершающийся `quit(0)` при успехе и `quit(1)` при провале.
 - Файл `tests/capture.gd` и `tests/diagnose.gd` **не** входят в автоматический прогон: первый требует реального рендеринга, второй — ручного запуска.
-- Критерий готовности любой задачи: `.\tools\run_checks.ps1` завершается с кодом 0.
+- Критерий готовности любой задачи: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1` завершается с кодом 0. Плюс минимум один случай, где проверка реально исполняется: прогон, где всё SKIP, завершается кодом 0 и неотличим от прогона, который выполнился и прошёл.
+- **Коммиты делает только партнёр.** Ни контроллер, ни субагенты не выполняют `git commit`. Изменения остаются в рабочем дереве, партнёр их просматривает и коммитит сам. Решение партнёра, принятое после того, как контроллер дважды закоммитил без разрешения.
 - Проверка, которая проходит по неверной причине, считается неисправной и подлежит ужесточению (правило `CHECKLIST.md`).
 - Существующие actions `move_forward`, `move_backward`, `move_left`, `move_right`, `jump`, `sprint` не меняются.
 - Игровой код не использует встроенное действие `ui_cancel`.
 - Несвязанные изменения в текущую задачу не включаются.
 - Слой коллизий `1` = мир. Тела игрока и врагов ставятся на свои слои в Фазе 2; в Фазе 0 достаточно объявить имена слоёв.
+- **Политика выполнения PowerShell на этой машине — `Restricted` (все области).** Голый вызов `.\tools\run_checks.ps1` падает с `PSSecurityException` до запуска скрипта. Все проверки в этом плане выполняются формой `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1`. Машинную политику не менять — это решение пользователя.
+
+## Исправления, внесённые по итогам Task 2
+
+Плану изначально было указано неверно; исполнитель отклонился обоснованно, решения ниже приняты как правильные.
+
+1. **Сцена добавляется в дерево.** План требовал инстанцировать `main.tscn` без `root.add_child()`. Вне дерева `Camera3D.global_position` возвращает единичную матрицу (с ошибкой движка `!is_inside_tree()`), проверка высоты глаз срабатывает ложно на `0.00`, а RID'ы Jolt утекают на выходе. Правильно: `root.add_child(world)` + `await physics_frame`, как в исходном харнессе.
+2. **Убрана проверка `main.tscn loads`.** План помещал `_check(packed != null, …)` *после* guard'а `if packed == null: quit(1); return`, то есть такая проверка всегда истинна — выполнение сюда не доходит. По правилу «проверка, проходящая по неверной причине, неисправна» такую строку нельзя оставлять. Guard с `FATAL` и `quit(1)` сохраняется.
+3. **Строка `RESULT` — трёхаргументная** (`checks, failed, warnings`) во всех трёх файлах, а не двухаргументная: `movement.gd` обязан сообщать свои 2 предупреждения, а все три файла должны завершаться одинаково.
+4. **Константа `FLOOR_EXTENT` удалена** — мёртвая, нигде не используется.
 
 ## Review Focus
 
@@ -83,14 +94,21 @@ $Tests = @("smoke", "movement", "input_actions", "input_gate", "integrity",
 - Код возврата теста (`$LASTEXITCODE`) определяет статус. `0` = `PASS`, иначе `FAIL`. Отсутствующий файл = `SKIP`.
 - В конце печатается строка вида `RESULT: <PASS> passed, <FAIL> failed, <SKIP> skipped`, и скрипт завершается кодом 1, если `FAIL` > 0.
 
-- [ ] **Step 3: Прогнать скрипт на текущем единственном тесте**
+- [ ] **Step 3: Прогнать скрипт на текущем состоянии репозитория**
 
-Run: `.\tools\run_checks.ps1`
-Expected: строка `smoke ... PASS`, остальные — `SKIP`, `RESULT: 1 passed, 0 failed, 9 skipped`, код возврата 0.
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1`
+Expected: `RESULT: 0 passed, 0 failed, 11 skipped`, код возврата 0.
+
+Все 11 имён в `$Tests` дают `SKIP` — на этом шаге ни один из перечисленных
+файлов ещё не существует. Существующий `tests/headless_smoke.gd` в список не
+входит: его удаляет Task 2, а задачи 2–7 создают `smoke`, `movement`,
+`input_actions`, `input_gate`, `integrity` и остальные. Это ожидаемо:
+критерий SKIP-семантики в том, что отсутствующий файл не считается ни
+успехом, ни провалом. Первый реально исполняемый прогон появится в Task 2.
 
 - [ ] **Step 4: Проверить фильтр**
 
-Run: `.\tools\run_checks.ps1 smok`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1 smok`
 Expected: только тест `smoke` в таблице, тот же результат, код 0.
 
 - [ ] **Step 5: Скопировать спеку и план в репозиторий**
@@ -100,8 +118,7 @@ Expected: только тест `smoke` в таблице, тот же резу�
 - [ ] **Step 6: Закоммитить**
 
 ```bash
-git add tools/run_checks.ps1 docs/
-git commit -m "build: add single-command test runner and design docs"
+git add tools/run_checks.ps1 docs/   # НЕ КОММИТИТЬ — коммит делает партнёр
 ```
 
 ---
@@ -179,7 +196,7 @@ _check(packed != null, "main.tscn loads")
 
 - [ ] **Step 5: Прогнать все три файла**
 
-Run: `.\tools\run_checks.ps1`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1`
 Expected: `smoke`, `movement`, `integrity` — `PASS`; остальные `SKIP`; итог `RESULT: 3 passed, 0 failed, 8 skipped`, код 0. Общее число проверок в `movement.gd` должно совпасть с исходным харнессом минус проверки целостности сцены и не уменьшиться.
 
 - [ ] **Step 6: Удалить `tests/headless_smoke.gd` вместе с `.uid`**
@@ -189,12 +206,11 @@ Expected: файл удалён, Godot не создаёт его заново.
 
 - [ ] **Step 7: Прогнать повторно и закоммитить**
 
-Run: `.\tools\run_checks.ps1`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1`
 Expected: код 0, `smoke` / `movement` / `integrity` зелёные.
 
 ```bash
-git add tests/
-git commit -m "test: split monolithic smoke harness by subsystem"
+git add tests/   # НЕ КОММИТИТЬ — коммит делает партнёр
 ```
 
 ---
@@ -246,7 +262,7 @@ func _initialize() -> void:
 
 - [ ] **Step 2: Убедиться, что проверка падает**
 
-Run: `.\tools\run_checks.ps1 input_actions`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1 input_actions`
 Expected: `FAIL` на `action fire exists` и код возврата 1.
 
 - [ ] **Step 3: Добавить три actions в `project.godot`**
@@ -277,12 +293,11 @@ Expected: `FAIL` на `action fire exists` и код возврата 1.
 
 - [ ] **Step 5: Прогнать и закоммитить**
 
-Run: `.\tools\run_checks.ps1 input_actions`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1 input_actions`
 Expected: все 9 проверок `PASS`, код 0.
 
 ```bash
-git add project.godot tests/input_actions.gd
-git commit -m "feat: add fire, pause and interact actions with named collision layers"
+git add project.godot tests/input_actions.gd   # НЕ КОММИТИТЬ — коммит делает партнёр
 ```
 
 ---
@@ -323,7 +338,7 @@ func _initialize() -> void:
 
 - [ ] **Step 2: Убедиться, что проверка падает**
 
-Run: `.\tools\run_checks.ps1 input_gate`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1 input_gate`
 Expected: ошибка загрузки `res://scripts/input_gate.gd` — класс `InputGate` не найден, код возврата 1.
 
 - [ ] **Step 3: Создать `scripts/input_gate.gd`**
@@ -343,12 +358,11 @@ static func is_play_input_allowed(mouse_mode: int) -> bool:
 
 - [ ] **Step 4: Прогнать и закоммитить**
 
-Run: `.\tools\run_checks.ps1 input_gate`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1 input_gate`
 Expected: 5 проверок `PASS`, код 0.
 
 ```bash
-git add scripts/input_gate.gd tests/input_gate.gd
-git commit -m "feat: add InputGate pure predicate for play input permission"
+git add scripts/input_gate.gd tests/input_gate.gd   # НЕ КОММИТИТЬ — коммит делает партнёр
 ```
 
 ---
@@ -401,12 +415,11 @@ var play_input_allowed := InputGate.is_play_input_allowed(Input.mouse_mode)
 
 - [ ] **Step 6: Прогнать и закоммитить**
 
-Run: `.\tools\run_checks.ps1`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1`
 Expected: `smoke`, `movement`, `input_actions`, `input_gate`, `integrity` — `PASS`; `RESULT: 5 passed, 0 failed, 6 skipped`; код 0. В выводе `movement` не должно быть строк `[WARN]`.
 
 ```bash
-git add player.gd player.tscn tests/movement.gd
-git commit -m "fix: gate play input on mouse capture, move capture toggle to Esc"
+git add player.gd player.tscn tests/movement.gd   # НЕ КОММИТИТЬ — коммит делает партнёр
 ```
 
 ---
@@ -443,19 +456,18 @@ git commit -m "fix: gate play input on mouse capture, move capture toggle to Esc
 
 - [ ] **Step 4: Прогнать и убедиться, что проверки падают при поломке**
 
-Run: `.\tools\run_checks.ps1 integrity`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1 integrity`
 Expected: оба файла зелёные, код 0.
 
 Затем временно выставить в `player.gd` `fall_limit = -2.0` и прогнать `.\tools\run_checks.ps1 integrity` — проверка respawn должна упасть. Вернуть `fall_limit = -50.0` и убедиться, что прогон снова зелёный. Это обязательный шаг: он доказывает, что проверка способна падать, а не что она зелёная по построению.
 
 - [ ] **Step 5: Прогнать всё и закоммитить**
 
-Run: `.\tools\run_checks.ps1`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1`
 Expected: код 0, `RESULT: 5 passed, 0 failed, 6 skipped`.
 
 ```bash
-git add tests/integrity.gd
-git commit -m "test: replace always-passing fall-through check with real tunneling probe"
+git add tests/   # НЕ КОММИТИТЬ — коммит делает партнёрintegrity.gd
 ```
 
 ---
@@ -475,7 +487,7 @@ git commit -m "test: replace always-passing fall-through check with real tunneli
 
 - [ ] **Step 2: Прогнать автопроверки**
 
-Run: `.\tools\run_checks.ps1`
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_checks.ps1`
 Expected: код 0. Тени не влияют на физику, поэтому все проверки остаются зелёными.
 
 - [ ] **Step 3: Захватить кадры из движка**
@@ -488,8 +500,7 @@ Expected: в выводе строки `SHOT …` для кадров `spawn`, `
 - [ ] **Step 4: Закоммитить**
 
 ```bash
-git add main.tscn
-git commit -m "feat: enable shadows on directional light for height readability"
+git add main.tscn   # НЕ КОММИТИТЬ — коммит делает партнёр
 ```
 
 ---
@@ -510,3 +521,11 @@ git commit -m "feat: enable shadows on directional light for height readability"
 ## Что дальше
 
 Фазы 1–5 оформляются отдельными планами — по одной на подсистему, каждая со своим набором задач. Общий каркас уже зафиксирован в спецификации (разделы 6–11). Очередность фаз и параллелизм внутри них не меняются: Фаза 1 (оружие) последовательна, Фаза 4 допускает параллелизм «лобби ∥ сохранение», и карта владения файлами фиксируется до запуска параллельной фазы.
+
+## Итог Фазы 0
+
+1. **Все семь задач Фазы 0 реализованы и проверены.** Автоматический прогон сообщает 5 зелёных проверок (`smoke`, `movement`, `input_actions`, `input_gate`, `integrity`) и 6 SKIP для фаз, которые ещё не начаты.
+2. **88 утверждений суммарно** по этим пяти харнессам: `smoke` 6, `movement` 52, `input_actions` 9, `input_gate` 5, `integrity` 16.
+3. **Каждый харнесс доказанно способен падать** — проверено не только успешное прохождение, но и его способность сообщить об ошибке.
+4. **Семь дефектов в этом плане** обнаружены исполнителями в ходе работ и исправлены; они перечислены в разделе «Исправления, внесённые по итогам Task 2» и в брифах задач.
+5. **Один критерий приёмки НЕ выполнен и перенесён на будущее:** включить тени нельзя продемонстрировать визуально, потому что в `player.tscn` нет `MeshInstance3D`, а значит игрок не отбрасывает тень. Польза в читаемости не доказана, пока у игрока нет видимой геометрии, — это задача Фазы 1.

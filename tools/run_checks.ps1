@@ -85,6 +85,20 @@ try {
         exit 1
     }
 
+    # Global class_name declarations (scripts\input_gate.gd declares InputGate)
+    # are visible to the parser only through .godot\global_script_class_cache.cfg,
+    # and that file is git-ignored. On a clean clone it does not exist, so every
+    # script referring to a class_name fails to parse with "Identifier ... not
+    # declared in the current scope". One import pass rebuilds the cache and
+    # costs about two seconds, so run it only on a cold cache instead of on every
+    # invocation. Placed after the engine pre-check above so a missing Godot
+    # still fails fast with its own message instead of being invoked here.
+    $classCache = Join-Path $RepoRoot '.godot\global_script_class_cache.cfg'
+    if (-not (Test-Path -LiteralPath $classCache -PathType Leaf)) {
+        Write-Output "importing project (global class cache missing) ..."
+        & $GodotBin --headless --path . --import | Out-Null
+    }
+
     $pass = 0
     $fail = 0
     $skip = 0
