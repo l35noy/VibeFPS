@@ -45,7 +45,7 @@ $ErrorActionPreference = 'Stop'
 $GodotBin = "E:\Godot\Godot_v4.7.2-stable_win64.exe"
 
 # Ordered list of check names, without the .gd extension.
-$Tests = @("smoke", "movement", "input_actions", "input_gate", "integrity",
+$Tests = @("smoke", "movement", "input_actions", "input_gate", "weapon_data", "integrity",
            "weapon", "projectile", "enemies", "waves", "save", "progression")
 
 # tests\capture.gd needs a real renderer and tests\diagnose.gd is run by hand,
@@ -89,13 +89,52 @@ try {
     # are visible to the parser only through .godot\global_script_class_cache.cfg,
     # and that file is git-ignored. On a clean clone it does not exist, so every
     # script referring to a class_name fails to parse with "Identifier ... not
-    # declared in the current scope". One import pass rebuilds the cache and
-    # costs about two seconds, so run it only on a cold cache instead of on every
-    # invocation. Placed after the engine pre-check above so a missing Godot
-    # still fails fast with its own message instead of being invoked here.
+    # declared in the current scope".
+    #
+    # The cache also goes stale without disappearing, which is the case that
+    # matters most: adding a class_name leaves an existing cache that simply does
+    # not list it, and the script referring to it then dies at parse time with
+    # "Could not find type ... in the current scope". That reads as that script's
+    # own failure and the script cannot say why -- a check that dies before its
+    # first assertion cannot report its own failure. So the cache counts as stale
+    # when it is missing OR when any source is newer than it.
+    #
+    # One import pass rebuilds the cache and costs about two seconds, so it runs
+    # only when one of those two holds, not on every invocation. Placed after the
+    # engine pre-check above so a missing Godot still fails fast with its own
+    # message instead of being invoked here.
     $classCache = Join-Path $RepoRoot '.godot\global_script_class_cache.cfg'
-    if (-not (Test-Path -LiteralPath $classCache -PathType Leaf)) {
-        Write-Output "importing project (global class cache missing) ..."
+    $cacheFile = Get-Item -LiteralPath $classCache -ErrorAction SilentlyContinue
+
+    # The scan is the only cost of this check, so it is one pass, and .godot is
+    # pruned rather than descended into and filtered out afterwards: it holds the
+    # engine's imported binaries, is most of the tree by file count, and can never
+    # contain a class_name. -Include cannot express that -- with -LiteralPath it
+    # does not filter at all (it returned every file in the repo, project.godot
+    # among them), which would both build FileInfo for the whole tree and treat an
+    # edit to any file as a reason to re-import. The extension test is explicit
+    # instead.
+    $sourceRoots = @(Get-ChildItem -LiteralPath $RepoRoot -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne '.godot' } |
+        Select-Object -ExpandProperty FullName)
+    $newestSource = $null
+    # An empty -LiteralPath array is a terminating parameter binding error, and
+    # $ErrorActionPreference is Stop: it would abort the whole run with a
+    # PowerShell stack trace and no RESULT line. Unreachable while project.godot
+    # exists, but this is the single entry point to every check.
+    if ($sourceRoots.Count -gt 0) {
+        # LastWriteTimeUtc, not LastWriteTime: the cache is written by the engine
+        # and both sides of the comparison are compared across a DST boundary,
+        # which local wall-clock timestamps do not survive.
+        $newestSource = Get-ChildItem -LiteralPath $sourceRoots -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in '.gd', '.tscn', '.tres' } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+    }
+    $needsImport = $null -eq $cacheFile -or
+        ($null -ne $newestSource -and $newestSource.LastWriteTimeUtc -gt $cacheFile.LastWriteTimeUtc)
+    if ($needsImport) {
+        Write-Output "importing project (class cache missing or stale) ..."
         & $GodotBin --headless --path . --import | Out-Null
     }
 

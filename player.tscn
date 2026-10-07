@@ -1,18 +1,34 @@
-[gd_scene format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://player.gd" id="1_script"]
+[ext_resource type="Material" path="res://scripts/player_body_material.tres" id="2_body_material"]
+[ext_resource type="PackedScene" path="res://pistol.tscn" id="3_pistol"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 height = 1.8
 radius = 0.4
 
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
+radius = 0.4
+height = 1.8
+
 [node name="Player" type="CharacterBody3D"]
+collision_layer = 2
 script = ExtResource("1_script")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_body")
 
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("CapsuleMesh_body")
+surface_material_override/0 = ExtResource("2_body_material")
+
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 0)
 current = true
+
+[node name="Pistol" parent="." instance=ExtResource("3_pistol")]
+position = Vector3(0.16, 1.5, -0.45)
+rotation = Vector3(-0.05, 0.1, 0)

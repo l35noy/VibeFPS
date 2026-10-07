@@ -1,0 +1,180 @@
+[gd_scene load_steps=21 format=3 uid="uid://jyplrr3l"]
+
+[ext_resource type="PackedScene" path="res://player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://scripts/range_target.gd" id="2_target_script"]
+[ext_resource type="Script" path="res://scripts/hurtbox.gd" id="3_hurtbox_script"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_range"]
+sky_top_color = Color(0.083611436, 0.55883366, 0.7163719, 1)
+sky_horizon_color = Color(0.620054, 0.7175465, 0.7465719, 1)
+ground_bottom_color = Color(0.24614578, 0.16089359, 0.11945697, 1)
+ground_horizon_color = Color(0.620054, 0.7175465, 0.7465719, 1)
+
+[sub_resource type="Sky" id="Sky_range"]
+sky_material = SubResource("ProceduralSkyMaterial_range")
+
+[sub_resource type="Environment" id="Environment_range"]
+background_mode = 2
+background_energy_multiplier = 0.5
+sky = SubResource("Sky_range")
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+size = Vector3(26, 1, 46)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
+size = Vector3(26, 1, 46)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.8217887, 0.82178867, 0.82178867, 1)
+metallic_specular = 0.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_wall_back"]
+size = Vector3(26, 4, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wall_back"]
+size = Vector3(26, 4, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_wall_side"]
+size = Vector3(1, 4, 46)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wall_side"]
+size = Vector3(1, 4, 46)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wall"]
+albedo_color = Color(0.588, 0.643, 0.686, 1)
+metallic_specular = 0.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_target"]
+size = Vector3(1, 2, 0.6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_target"]
+size = Vector3(1, 2, 0.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_target_near"]
+albedo_color = Color(0.878, 0.376, 0.216, 1)
+metallic_specular = 0.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_target_mid"]
+albedo_color = Color(0.298, 0.643, 0.325, 1)
+metallic_specular = 0.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_target_far"]
+albedo_color = Color(0.239, 0.451, 0.831, 1)
+metallic_specular = 0.0
+
+[node name="Range" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_range")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, -0.408248, 0.57735, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 0, 10, 0)
+shadow_enabled = true
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, -1)
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("BoxMesh_floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_floor")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("BoxShape3D_floor")
+
+[node name="BackWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 2, -23.5)
+
+[node name="Mesh" type="MeshInstance3D" parent="BackWall"]
+mesh = SubResource("BoxMesh_wall_back")
+surface_material_override/0 = SubResource("StandardMaterial3D_wall")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BackWall"]
+shape = SubResource("BoxShape3D_wall_back")
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-12.5, 2, -1)
+
+[node name="Mesh" type="MeshInstance3D" parent="LeftWall"]
+mesh = SubResource("BoxMesh_wall_side")
+surface_material_override/0 = SubResource("StandardMaterial3D_wall")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("BoxShape3D_wall_side")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(12.5, 2, -1)
+
+[node name="Mesh" type="MeshInstance3D" parent="RightWall"]
+mesh = SubResource("BoxMesh_wall_side")
+surface_material_override/0 = SubResource("StandardMaterial3D_wall")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("BoxShape3D_wall_side")
+
+[node name="TargetNear" type="StaticBody3D" parent="."]
+position = Vector3(0, 0, -4)
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("2_target_script")
+
+[node name="Mesh" type="MeshInstance3D" parent="TargetNear"]
+position = Vector3(0, 1, 0)
+mesh = SubResource("BoxMesh_target")
+surface_material_override/0 = SubResource("StandardMaterial3D_target_near")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TargetNear"]
+position = Vector3(0, 1, 0)
+shape = SubResource("BoxShape3D_target")
+
+[node name="Hurtbox" type="Area3D" parent="TargetNear"]
+position = Vector3(0, 1, 0)
+script = ExtResource("3_hurtbox_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TargetNear/Hurtbox"]
+shape = SubResource("BoxShape3D_target")
+
+[node name="TargetMid" type="StaticBody3D" parent="."]
+position = Vector3(3, 0, -7.4)
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("2_target_script")
+
+[node name="Mesh" type="MeshInstance3D" parent="TargetMid"]
+position = Vector3(0, 1, 0)
+mesh = SubResource("BoxMesh_target")
+surface_material_override/0 = SubResource("StandardMaterial3D_target_mid")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TargetMid"]
+position = Vector3(0, 1, 0)
+shape = SubResource("BoxShape3D_target")
+
+[node name="Hurtbox" type="Area3D" parent="TargetMid"]
+position = Vector3(0, 1, 0)
+script = ExtResource("3_hurtbox_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TargetMid/Hurtbox"]
+shape = SubResource("BoxShape3D_target")
+
+[node name="TargetFar" type="StaticBody3D" parent="."]
+position = Vector3(-5, 0, -13.1)
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("2_target_script")
+
+[node name="Mesh" type="MeshInstance3D" parent="TargetFar"]
+position = Vector3(0, 1, 0)
+mesh = SubResource("BoxMesh_target")
+surface_material_override/0 = SubResource("StandardMaterial3D_target_far")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TargetFar"]
+position = Vector3(0, 1, 0)
+shape = SubResource("BoxShape3D_target")
+
+[node name="Hurtbox" type="Area3D" parent="TargetFar"]
+position = Vector3(0, 1, 0)
+script = ExtResource("3_hurtbox_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TargetFar/Hurtbox"]
+shape = SubResource("BoxShape3D_target")
+
+[node name="Player" parent="." instance=ExtResource("1_player")]

@@ -11,12 +11,21 @@ var _jump_queued: bool = false
 var _spawn_transform: Transform3D = Transform3D.IDENTITY
 
 @onready var _camera: Camera3D = $Camera3D
+## Пистолет игрока. Может отсутствовать: лобби Фазы 4 и любые сцены без
+## оружия создают того же персонажа, и требовать в каждой из них узел с
+## характеристиками оружия было бы требованием к сцене, а не к игроку.
+@onready var _pistol: Pistol = get_node_or_null("Pistol") as Pistol
 
 
 func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	set_spawn_transform()
 	_connect_focus_recapture()
+	if _pistol != null:
+		# Контракт смены сцены, а не гигиена: полупустой магазин, переживший
+		# поездку в лобби и обратно, стоил бы игроку бесплатных патронов при
+		# каждом входе в бой.
+		_pistol.reset_for_scene_change()
 
 
 func _exit_tree() -> void:
