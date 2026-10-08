@@ -69,6 +69,10 @@ class _Log extends RefCounted:
 
 const _PISTOL_SCRIPT_PATH := "res://scripts/pistol.gd"
 const _PISTOL_DATA_PATH := "res://data/weapons/pistol.tres"
+## The shipped pistol, loaded rather than rebuilt. The barrel marker is scene
+## wiring, and a marker the harness invents for itself would be a marker the
+## game never loads.
+const _PISTOL_SCENE_PATH := "res://pistol.tscn"
 
 ## The values the design fixes for the pistol. They are restated here so a
 ## balance edit to pistol.tres cannot silently turn the harness into a check of
@@ -92,6 +96,20 @@ const _TIMER_TOLERANCE := 0.35
 ## Float slack on the short side of a timer, so accumulated delta rounding can
 ## never fake a timer that ended early.
 const _TIMER_EPSILON := 0.05
+## How many physics ticks the flight is watched for after the aim source is
+## turned and moved. At the shipped 120 Hz and 40 m/s that is half a second and
+## 20 m of flight -- long enough for a bend of the parent to be unmistakable,
+## short enough to stay inside the 3 s projectile lifetime.
+const _TRAJECTORY_TICKS := 60
+## How far off its own line the projectile may drift, in metres. The bug this
+## catches moves a shot sideways by METRES (a parent yaw of 45 deg rotates the
+## whole subtree around the pivot), while float32 noise over 20 m is about
+## 2e-6 m. Centimetres separate the two with four orders of magnitude to spare.
+const _TRAJECTORY_DRIFT_TOLERANCE := 0.05
+## How many seconds of real frames the startup check watches a weapon that
+## entered the tree with the button held. Twice the 0.5 s rate limit, so a
+## pistol that fires on level alone would have spent four rounds.
+const _NO_SHOT_WATCH_SECONDS := 1
 
 var _failures: PackedStringArray = []
 var _checks := 0
@@ -147,6 +165,73 @@ func _await_until(predicate: Callable, max_seconds := _WAIT_CAP_SECONDS) -> bool
 
 func _now_ms() -> int:
 	return Time.get_ticks_msec()
+
+
+## Releases the fire action and lets at least one real process frame go by,
+## so a pistol whose arming latch needs an observed release has actually seen
+## one before the next press is read as input. Scenarios that fire through the
+## real input path start here; a pistol that entered the tree with the button
+## already down is exactly what the startup check is about.
+func _settle_fire_released() -> void:
+	Input.action_release("fire")
+	await process_frame
+	await process_frame
+
+
+## The aim source of the trajectory scenario hangs under a parent that the
+## scenario moves afterwards. Every other scenario's aim source hangs straight
+## off the world and nothing ever touches its ancestors -- which is precisely
+## why a shot could stay glued to it and go unnoticed.
+func _new_aim_under_pivot(world: Node3D) -> Node3D:
+	var pivot := Node3D.new()
+	pivot.name = "Pivot"
+	world.add_child(pivot)
+	var aim := Node3D.new()
+	aim.name = "AimSource"
+	pivot.add_child(aim)
+	return pivot
+
+
+## A player's camera, in the pose player.tscn gives it: high up, and the
+## current one in the viewport. pistol.tscn leaves fire_rate_source empty on
+## purpose, so this is the node the pistol actually aims from in the game.
+func _new_eye(world: Node3D) -> Camera3D:
+	var eye := Camera3D.new()
+	eye.name = "Eye"
+	eye.current = true
+	eye.position = Vector3(0.0, 1.7, 0.0)
+	world.add_child(eye)
+	return eye
+
+
+## The shipped pistol's geometry grafted onto a probe. The probe is what
+## answers the input gate with an explicit mouse mode (headless cannot capture
+## the cursor); the children are the scene's own, MOVED rather than copied, so
+## the barrel marker under test is the one pistol.tscn really ships. The
+## exports are set before the node enters the tree, because _ready() fills the
+## magazine from them and a magazine filled from a null data is empty forever.
+func _new_pistol_from_scene(world: Node3D, scene: PackedScene,
+		data: WeaponData, projectiles := true) -> _PistolProbe:
+	var geometry := scene.instantiate()
+	var pistol := _PistolProbe.new()
+	pistol.name = "Pistol"
+	pistol.data = data
+	if projectiles:
+		pistol.projectile_scene = _projectile_scene
+	for child in geometry.get_children():
+		geometry.remove_child(child)
+		# owner belongs to the scene tree it was packed from; carrying it over
+		# would make Godot complain that the probe now owns nodes it never packed.
+		child.owner = null
+		pistol.add_child(child)
+	geometry.free()
+	world.add_child(pistol)
+	for i in 8:
+		await process_frame
+		if pistol.is_node_ready():
+			return pistol
+	print("FATAL: the pistol never became ready")
+	return pistol
 
 
 # --------------------------------------------------------------------------
@@ -272,6 +357,9 @@ func _initialize() -> void:
 	await _test_starting_magazine()
 	await _test_single_shot()
 	await _test_shot_follows_fire_source()
+	await _test_shot_keeps_its_line_when_the_aim_source_moves()
+	await _test_shot_starts_at_the_barrel()
+	await _test_no_shot_while_the_button_is_down_on_entry()
 	await _test_empty_magazine_and_automatic_reload()
 	await _test_reload_blocks_firing_and_cannot_be_restarted()
 	await _test_fire_rate()
@@ -464,6 +552,197 @@ func _test_shot_follows_fire_source() -> void:
 	world.free()
 
 
+## A shot must keep going where it was sent, whatever the aim source does
+## afterwards. The player's camera is attached to a character who turns and
+## walks every frame, and a projectile that stays a child of that camera has
+## its world transform rewritten by the parent's every tick -- so a 45 degree
+## yaw after the shot drags the bullet sideways by metres while it is in
+## flight, and the bullet the player sees is not the bullet that hits.
+##
+## The aim source here hangs under a pivot that the scenario turns and moves
+## after the shot, which is the player's own situation with one layer of
+## indirection. The projectile is still parented to the aim source (the
+## lifecycle parent is what free() and the projectile lists read), so this is
+## about the transform, never about the parenting.
+func _test_shot_keeps_its_line_when_the_aim_source_moves() -> void:
+	print("-- trajectory: the shot keeps its line when the aim source's parent moves")
+	var world := _new_world()
+	var pivot := _new_aim_under_pivot(world)
+	var aim := pivot.get_node("AimSource") as Node3D
+	var pistol := await _new_pistol(world, _data, aim)
+	await _settle_fire_released()
+	Input.action_press("fire")
+	var spawned := await _await_until(func() -> bool: return _live_projectiles(aim).size() > 0, 5.0)
+	Input.action_release("fire")
+	_check(spawned, "the shot was fired through the real input path",
+		"(got %d projectiles)" % _live_projectiles(aim).size())
+	if not spawned:
+		world.free()
+		return
+
+	var bullet := _live_projectiles(aim)[0]
+	_check(bullet.get_parent() == aim,
+		"the projectile is still parented to the aim source: lifecycle did not change")
+	var start: Vector3 = bullet.global_position
+	# The line the shot is supposed to keep. Read once, before the world moves
+	# under it -- that is what "goes where it was aimed" means.
+	var line := -aim.global_transform.basis.z
+
+	pivot.rotation.y = deg_to_rad(45.0)
+	pivot.position = Vector3(2.0, 0.0, 0.0)
+
+	var worst := 0.0
+	for i in _TRAJECTORY_TICKS:
+		await physics_frame
+		if not is_instance_valid(bullet):
+			break
+		var offset: Vector3 = bullet.global_position - start
+		# Distance from the line, not from the origin: the shot is SUPPOSED to
+		# travel along `line`, so only the sideways component is drift.
+		worst = maxf(worst, (offset - line * offset.dot(line)).length())
+	print("    worst sideways drift %.4f m over %d physics ticks" % [worst, _TRAJECTORY_TICKS])
+	_check(worst <= _TRAJECTORY_DRIFT_TOLERANCE,
+		"the shot flew straight: moving the aim source's parent did not bend it",
+		"(worst sideways drift %.4f m, tolerance %.3f m)" % [worst, _TRAJECTORY_DRIFT_TOLERANCE])
+	_check(is_instance_valid(bullet), "and the projectile was still alive at the end of the flight")
+	world.free()
+
+
+## Where a shot STARTS and where it is AIMED are two different questions. The
+## design pins the second one to the camera (a pistol held to the side is
+## offset from the eye on purpose, player.tscn), but the first one is the
+## barrel: a bullet that leaves the camera is visibly fired out of the
+## player's head, and the two points are a hand's width apart.
+##
+## The pistol here is the shipped pistol.tscn, instantiated rather than
+## rebuilt in code, so this is also the wiring check: a scene without a Muzzle
+## marker falls back to the camera, and the fallback is asserted below rather
+## than left to the log.
+func _test_shot_starts_at_the_barrel() -> void:
+	print("-- start point: the shot leaves the barrel, aimed by the camera")
+	var packed: PackedScene = load(_PISTOL_SCENE_PATH)
+	_check(packed != null, "pistol.tscn is loadable", "(%s)" % _PISTOL_SCENE_PATH)
+	if packed == null:
+		return
+	var world := _new_world()
+	var eye := _new_eye(world)
+	# fire_rate_source left empty on purpose, exactly as pistol.tscn leaves it:
+	# the pistol must find the camera the way it does in the game.
+	var pistol := await _new_pistol_from_scene(world, packed, _data)
+
+	var barrel := pistol.get_node_or_null("Muzzle") as Node3D
+	_check(barrel != null,
+		"pistol.tscn carries a Muzzle marker: the barrel is a place, not a guess")
+	_check(barrel != null and barrel.global_position.z < -0.1,
+		"and it sits in front of the pistol, not inside the grip",
+		"(got %s)" % ("no Muzzle" if barrel == null else str(barrel.global_position)))
+
+	var log := _watch(pistol)
+	_check(pistol.try_fire(), "the shot was fired")
+	_check(log.fired == 1, "and it announced exactly one shot", "(got %d)" % log.fired)
+	var bullets := _live_projectiles(eye)
+	_check(bullets.size() == 1, "one projectile was spawned under the camera",
+		"(got %d)" % bullets.size())
+	if bullets.size() == 1 and barrel != null:
+		var bullet := bullets[0]
+		_check(bullet.global_position.distance_to(barrel.global_position) < 0.001,
+			"the shot starts at the barrel, not at the camera",
+			"(bullet at %s, barrel at %s, eye at %s)" % [
+				str(bullet.global_position), str(barrel.global_position), str(eye.global_position)])
+		_check(bullet.global_position.distance_to(eye.global_position) > 0.1,
+			"and visibly not out of the eye the player is looking through",
+			"(%.3f m from the eye)" % bullet.global_position.distance_to(eye.global_position))
+		var start: Vector3 = bullet.global_position
+		await _await_until(func() -> bool: return bullet.global_position.distance_to(start) > 0.5, 5.0)
+		var moved: Vector3 = bullet.global_position - start
+		_check(moved.normalized().dot(-eye.global_transform.basis.z) > 0.99,
+			"but it is still aimed by the camera, not by the barrel",
+			"(%.3f m along %.3f m of the camera's forward axis)" % [
+				moved.length(), moved.normalized().dot(-eye.global_transform.basis.z)])
+	world.free()
+
+	# The fallback chain is part of the contract, not an accident: a harness or
+	# a scene built without a barrel marker still has to shoot from somewhere.
+	# It is asserted here so a future "no barrel in this scene" cannot turn into
+	# a bullet fired out of the player's skull with a clean test log.
+	var bare_world := _new_world()
+	var bare_eye := _new_eye(bare_world)
+	var bare := await _new_pistol(bare_world, _data, null)
+	_check(bare.get_node_or_null("Muzzle") == null,
+		"precondition: a pistol built without a barrel marker really has none")
+	_check(bare.try_fire(), "a pistol without a barrel marker still fires")
+	var bare_bullets := _live_projectiles(bare_eye)
+	_check(bare_bullets.size() == 1, "its projectile is parented to the camera",
+		"(got %d)" % bare_bullets.size())
+	if bare_bullets.size() == 1:
+		_check(bare_bullets[0].global_position.distance_to(bare_eye.global_position) < 0.001,
+			"and falls back to firing from the camera rather than refusing to shoot",
+			"(bullet at %s, eye at %s)" % [
+				str(bare_bullets[0].global_position), str(bare_eye.global_position)])
+	bare_world.free()
+
+
+## The pistol polls `Input.is_action_pressed("fire")` every frame, so the
+## button's state at the moment it enters the tree IS a command. A real player
+## gets there with the left button already down -- the window took focus with
+## the mouse captured and the button never came up -- and the pistol's cooldown
+## and magazine both start at zero, so the first frame of every level is a free
+## shot the player never asked for.
+##
+## The latch is "no shot until a release has been observed", so the shot
+## happens on the next REAL press, and holding the button afterwards keeps
+## firing at the rate limit exactly as before.
+func _test_no_shot_while_the_button_is_down_on_entry() -> void:
+	print("-- startup: a fire button already down when the pistol enters the tree is not a shot")
+	# Pressed BEFORE the pistol exists: this is a button that was down when the
+	# level loaded, not a press the player is making now.
+	Input.action_press("fire")
+	var world := _new_world()
+	# Built here rather than through _new_pistol() so the log is subscribed
+	# BEFORE the node enters the tree. _new_pistol() awaits frames, and a shot
+	# spent during that wait would fire a signal nobody was listening to yet --
+	# which would turn this check green for exactly the wrong reason.
+	var pistol := _PistolProbe.new()
+	pistol.name = "Pistol"
+	pistol.data = _data
+	pistol.fire_rate_source = _new_muzzle(world)
+	pistol.projectile_scene = _projectile_scene
+	var log := _watch(pistol)
+	world.add_child(pistol)
+	for i in 8:
+		await process_frame
+		if pistol.is_node_ready():
+			break
+	_check(pistol.gate_mouse_mode == Input.MOUSE_MODE_CAPTURED,
+		"precondition: the input gate is open, so only the button can hold the shot back")
+
+	# A full second of real frames with the button down -- longer than the 0.5 s
+	# rate limit, so a pistol that fires on level alone would spend three rounds.
+	for i in _NO_SHOT_WATCH_SECONDS * 60:
+		await process_frame
+	_check(log.fired == 0,
+		"a weapon that entered the tree with fire held does not shoot",
+		"(got %d shots, magazine %d of %d)" % [log.fired, pistol.current_mag(), _EXPECTED_MAGAZINE])
+	_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
+		"and it kept every round", "(got %d)" % pistol.current_mag())
+
+	# The player's answer to "nothing happened": let go and press again.
+	Input.action_release("fire")
+	await process_frame
+	await process_frame
+	Input.action_press("fire")
+	var answered := await _await_until(func() -> bool: return log.fired > 0, 2.0)
+	Input.action_release("fire")
+	await process_frame
+	_check(answered, "and it does shoot on the next real press",
+		"(got %d shots)" % log.fired)
+	_check(log.fired == 1, "exactly one shot, not a burst that undoes the latch",
+		"(got %d shots)" % log.fired)
+	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
+		"costing exactly one round", "(got %d)" % pistol.current_mag())
+	world.free()
+
+
 ## Ten rounds at the design's rate, then the eleventh attempt: refused, with the
 ## magazine untouched. The pistol then reloads itself -- the player does not have
 ## to ask -- and the held fire button produces nothing for the whole reload,
@@ -478,7 +757,10 @@ func _test_empty_magazine_and_automatic_reload() -> void:
 
 	# The fire action is held from the first frame, so the ten rounds are spent
 	# on the real input path rather than by calling try_fire() behind the
-	# pistol's back.
+	# pistol's back. The release before it is the harness's half of the
+	# arming latch (see _settle_fire_released): the pistol has to see the
+	# button up before it will read a press as one.
+	await _settle_fire_released()
 	Input.action_press("fire")
 	var emptied := await _await_until(func() -> bool: return log.fired >= _EXPECTED_MAGAZINE, 20.0)
 	_check(emptied, "holding fire empties the magazine in %d rounds" % _EXPECTED_MAGAZINE,
@@ -565,7 +847,10 @@ func _test_reload_blocks_firing_and_cannot_be_restarted() -> void:
 	# Nine rounds are in there and the rate limit expires half a second into a
 	# 1.2 s reload, so without the is_reloading() rule in can_fire() this window
 	# hands the player a round at about 0.5 s -- before the restart attempt
-	# below, so the two defects cannot mask each other.
+	# below, so the two defects cannot mask each other. The release first is the
+	# harness's half of the arming latch: this pistol was created with the
+	# button already up and has to be seen holding it that way.
+	await _settle_fire_released()
 	Input.action_press("fire")
 	var halfway := await _await_until(func() -> bool:
 		return _now_ms() - log.reload_started_at_ms >= 600, _EXPECTED_RELOAD_TIME + 1.0)
@@ -669,6 +954,10 @@ func _test_input_gate() -> void:
 	pistol.gate_mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_check(not pistol.can_fire(), "can_fire() is false while the cursor is free")
 	_check(not pistol.try_fire(), "try_fire() refuses while the cursor is free")
+	# Released first, and seen released: with the gate shut the pistol must be
+	# refusing for the gate's reason alone, not because the arming latch never
+	# fired. That is the whole point of pinning the two rules apart.
+	await _settle_fire_released()
 	Input.action_press("fire")
 	var gated_shot := await _await_until(func() -> bool: return log.fired > 0, 1.5)
 	_check(not gated_shot, "a held fire action shoots nothing while the cursor is free",
