@@ -6,9 +6,9 @@
 script = ExtResource("1_script")
 display_name = "Pistol"
 damage = 30.0
-rounds_per_minute = 120.0
-magazine_size = 10
+rounds_per_minute = 150.0
+magazine_size = 18
 reload_time = 1.2
-projectile_speed = 40.0
+projectile_speed = 70.0
 projectile_radius = 0.08
-projectile_lifetime = 3.0
+projectile_lifetime = 4.0

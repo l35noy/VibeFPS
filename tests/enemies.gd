@@ -98,9 +98,27 @@ const _NAV_WALL_HEIGHT := 4.0
 const _NAV_WALL_HALF_Z := 1.0
 const _NAV_ENEMY_START := Vector3(0.0, 0.0, -5.0)
 const _NAV_TARGET := Vector3(0.0, 0.0, 5.0)
-## Окно наблюдения — 3 с симуляции, как требует бриф: при 120 тиках в секунду это
-## 360 физических кадров, за которые враг обязан пройти больше половины пути.
-const _NAV_OBSERVE_TICKS := 360
+## Окно наблюдения НЕ задано числом тиков, а выводится из геометрии мира и
+## скорости баланса (см. _route_ticks ниже): при 6 м/с враг проходил маршрут
+## быстрее, чем 3 с, и «3 с» работало за счёт скорости, а не за счёт смысла.
+## Длина ломаной через единственный проход — это нижняя оценка пути: сглаживание
+## Recast срезает углы, зато первые кадры агент тратит на построение пути.
+const _NAV_PASS_X := _NAV_WALL_MAX_X + 0.75
+## Запас окна на реальность пути: 1.25 — четверть маршрута сверх расчётного
+## времени. Подгонять его по факту «дошёл за N тиков» нельзя: число тиков зависит
+## от навмеша, а окно обязано пережить его перезапекание.
+const _NAV_ROUTE_SAFETY := 1.25
+## Скорость БАЛАНСА, под которую считаются окно и пороги маршрута. Константа, а
+## не data.move_speed: если окно считать по полю данных, «враг прошёл маршрут»
+## становится тавтологией — любая скорость дала бы зелёный результат, потому что
+## окно подстроилось бы под неё. Пин означает, что смена скорости в contact.tres
+## видна здесь, а не подгоняет проверку молча.
+const _NAV_DESIGN_SPEED := 2.0
+## Допуск «дошёл» на границе окна. Враг стоит у цели уже половину окна (запас
+## выше), а замер снимается на границе тика: половина тика при 2 м/с — это
+## 0.008 м, и округление сетки даёт сантиметры. Строгая стоп-дистанция без
+## допуска проверяется отдельно, в «остановке у цели».
+const _NAV_ARRIVAL_MARGIN := 0.1
 ## Кадр считается движущимся, если горизонтальная скорость выше этого порога.
 ## Первые кадры (путь ещё считается) и кадры у цели (путь закончен) движением
 ## не являются: требовать move_speed там означало бы требовать ехать с места,
@@ -137,10 +155,6 @@ const _NAV_DRIFT_EPS := 0.02
 # Task 5: проводка тира
 # --------------------------------------------------------------------------
 
-## Окно наблюдения врага в ЗАГРУЖЕННОМ тире — 3 с, то же, что у мирового
-## мира Task 4: сравнивать два мира честно можно только на одном и том же
-## окне, иначе «шёл» в одном и «шёл» в другом означают разные величины.
-const _RANGE_OBSERVE_TICKS := 360
 ## Пауза после bake перед первым замером. Карта навигации обновляется в начале
 ## физического шага, а bake тира заканчивается в _ready() корня сцены; без
 ## этих тиков первый запрос пути ушёл бы в ещё пустую карту.
@@ -149,18 +163,21 @@ const _RANGE_SETTLE_TICKS := 10
 ## набором «проверять нечего». Полсекунды движения — тот же минимум, что у
 ## мирового мира.
 const _RANGE_MIN_MOVING_FRAMES := 60
-## Насколько враг обязан сократить дистанцию до игрока за окно наблюдения.
-## Вдвое — тот же порог, что у мирового мира, и он заведомо достижим: враг
-## идёт 6 м/с из угла тира в начало координат, то есть ~20 м за 3 с.
-const _RANGE_APPROACH_RATIO := 0.5
+## Окно наблюдения врага в ЗАГРУЖЕННОМ тире считается так же, как у мирового
+## мира Task 4 (см. _route_ticks): та же скорость баланса и тот же запас, только
+## длиной маршрута здесь служит замеренная дистанция до игрока. Сравнивать два
+## мира честно можно только по правилу, а не по совпадению чисел.
+##
+## Окно прохода врага до игрока и окно ожидания касания после его прихода —
+## разные вещи, и склеивать их в одно число нельзя: первое считается из
+## маршрута, второе — из каденции. Каденция контакта в тире — дефолт врага
+## (contact_interval = 1.0 с, проверено выше), поэтому 2.5 с — это один интервал
+## с запасом: меньше окно обрезало бы наблюдение, а не отказ врага.
+const _RANGE_CONTACT_INTERVAL := 1.0
+const _RANGE_CONTACT_TICKS := 300
 ## Габарит хитбокса по короткой оси — глобальное решение 1: иначе в него
 ## физически невозможно попасть снарядом, летящим по центру.
 const _HURTBOX_MIN_WIDTH := 0.5
-## Окно ожидания контакта в загруженном тире. Враг идёт 6 м/с из угла в
-## начало координат (~21 м, то есть ~3.5 с), а касание приходит в первые секунды
-## после этого. 6 с — с запасом на обход мишеней; меньше окно обрезало бы
-## наблюдение, а не отказ врага.
-const _RANGE_CONTACT_TICKS := 720
 ## Минимальная дистанция от врага до игрока в сцене (бриф: враг «в дальнем
 ## углу, не ближе 4 м»). Меньше — враг стоит на игроке с первой секунды.
 const _RANGE_MIN_START_DISTANCE := 4.0
@@ -339,20 +356,41 @@ func _test_player_health() -> void:
 		"(got %.4f)" % _health(player))
 	_check(_alive(player), "игрок начинает жив")
 
-	print("-- 10 попаданий контактного врага до смерти игрока (спека 7.2)")
+	print("-- касаний до смерти игрока (спека 7.2): число выведено из данных")
 	var contact := load(_CONTACT_PATH) as EnemyData
 	if contact == null:
 		_bail("cannot load %s as EnemyData for the player survivability invariant" % _CONTACT_PATH)
 		return
-	var hits_to_death := float(player.get("max_health")) / contact.contact_damage
-	_check(absf(hits_to_death - 10.0) < _HEALTH_EPS,
-		"10 попаданий до смерти игрока",
-		"(max_health %.4f / contact_damage %.4f = %.4f)" % [
-			float(player.get("max_health")), contact.contact_damage, hits_to_death])
-
-	print("-- подключение обработчиков сигналов игрока")
+	# Сколько касаний убивает игрока — НЕ зашитое число: оно выводится из тех же
+	# двух величин, по которым урон и здоровье берутся в игре (потолок из
+	# player.tscn и урон за тик из contact.tres), то есть ceil(max_health /
+	# contact_damage). Проверка при этом не арифметика над бумагой, а поведение:
+	# выведенное число касаний действительно убивает игрока РОВНО на последнем, и
+	# ни на одно касание раньше. Подмена константы в take_damage() или в
+	# данных врага ломает её в любую сторону.
+	var player_max_health := float(player.get("max_health"))
+	var hits_to_death := int(ceil(player_max_health / contact.contact_damage))
 	player.died.connect(_on_player_died.bind(player))
 	player.health_changed.connect(_on_player_health_changed)
+	var survived := 0
+	for i in hits_to_death:
+		player.call("take_damage", contact.contact_damage)
+		if _died_count == 0:
+			survived += 1
+	_check(_died_count == 1 and survived == hits_to_death - 1,
+		"игрок гибнет ровно на %d-м касании контактного врага (ceil(max_health / contact_damage))" % hits_to_death,
+		"(выдержал %d касаний из %d; max_health %.4f, contact_damage %.4f)" % [
+			survived, hits_to_death, player_max_health, contact.contact_damage])
+
+	# Дальше идёт проверка проводки, и она начинается со СВОЕГО цикла урона:
+	# респавн вернул игроку полное здоровье (смерть выше это уже сделала), но
+	# счётчики сигналов живут в харнессе и пережили тот цикл — их надо сбросить,
+	# иначе «died ровно один» ниже посчитал бы смерть и отсюда.
+	print("-- счётчики сигналов сброшены: дальше свой цикл урона, с нуля")
+	_died_count = 0
+	_health_at_death = -1.0
+	_alive_at_death = true
+	_health_events.clear()
 
 	# Порядок шагов отличается от порядка утверждений в брифе, и это вынужденно:
 	# «take_damage(90.0) → health() == 10.0» и «десятое take_damage(10.0) →
@@ -485,9 +523,9 @@ func _test_contact_enemy() -> void:
 		"data врага — именно res://data/enemies/contact.tres",
 		"(got \"%s\")" % ("none" if data == null else data.resource_path))
 	if data != null:
-		_check(_near(data.max_health, 50.0), "max_health данных врага равен 50.0",
+		_check(_near(data.max_health, 60.0), "max_health данных врага равен 60.0",
 			"(got %.4f)" % data.max_health)
-		_check(_near(data.contact_damage, 10.0), "contact_damage данных врага равен 10.0",
+		_check(_near(data.contact_damage, 30.0), "contact_damage данных врага равен 30.0",
 			"(got %.4f)" % data.contact_damage)
 
 	print("-- проводка слоёв: тело на 3, хитбокс на 4, детект на стороне врага")
@@ -543,8 +581,13 @@ func _test_contact_enemy() -> void:
 			"(got %s, data.color %s)" % [str(material.albedo_color), str(data.color)])
 
 	print("-- стартовое состояние")
-	_check(_near(_enemy_health(enemy), 50.0), "враг начинает с 50 здоровья (data.max_health)",
-		"(got %.4f)" % _enemy_health(enemy))
+	# Потолок берётся из данных, а не зашивается: выше он уже запинен на
+	# величину из contact.tres, а здесь утверждается, что сцена берёт ИМЕННО его
+	# (сцена без data читала бы поле дефолтом и выглядела бы целой).
+	_check(data != null and _near(_enemy_health(enemy), data.max_health),
+		"враг начинает с data.max_health здоровья",
+		"(got %.4f, data.max_health %.4f)" % [
+			_enemy_health(enemy), 0.0 if data == null else data.max_health])
 	_check(_enemy_alive(enemy), "враг начинает жив")
 	# Контактная каденция — решение Фазы 2, а не поле сцены: если дефолт
 	# сменить, волна врагов начнёт бить втрое чаще, и проверка должна это видеть.
@@ -567,6 +610,11 @@ func _test_contact_enemy() -> void:
 	# apply_damage: прямая проверка была бы зелёной на враге, чей хитбокс лежит
 	# не на слое 4 и которого не видит ни один снаряд в игре.
 	var bullet := _spawn_projectile(world, Vector3(0.0, 0.9, 0.0))
+	# Урон снаряда читается ДО его исчезновения: после free() обращаться к узлу
+	# нельзя, а ожидаемое здоровье выводится из него и из потолка врага, а не из
+	# двух зашитых чисел (смена баланса урона в pistol.tres обязана ломать это
+	# утверждение, а не молча переписывать вместе с ним).
+	var bullet_damage := bullet.damage
 	var enemy_hurtbox := enemy.get_node_or_null("Hurtbox") as Hurtbox
 	var hits: Array[Node] = []
 	bullet.hit_something.connect(hits.append)
@@ -575,7 +623,9 @@ func _test_contact_enemy() -> void:
 	_check(hits.size() == 1 and hits[0] == enemy_hurtbox,
 		"снаряд попал в хитбокс врага и только в него",
 		"(hit %s)" % ("nothing" if hits.is_empty() else str((hits[0] as Node).name)))
-	_check(_near(_enemy_health(enemy), 20.0), "после одного попадания у врага 20 здоровья (50 - 30)",
+	_check(_near(_enemy_health(enemy), data.max_health - bullet_damage),
+		"после одного попадания у врага data.max_health - урон снаряда (%.4f - %.4f)" % [
+			data.max_health, bullet_damage],
 		"(got %.4f)" % _enemy_health(enemy))
 	_check(_enemy_alive(enemy), "враг жив после одного попадания")
 	_check(_enemy_died_count == 0, "после одного попадания сигнал died ещё не испускался",
@@ -1049,12 +1099,28 @@ func _test_enemy_navigation() -> void:
 		"у enemy_contact.gd есть next_path_direction() — направление пути наружу")
 
 	var move_speed := float(data.move_speed)
+	# Пин скорости баланса: окно и пороги маршрута считаются под неё (см.
+	# _NAV_DESIGN_SPEED), поэтому «прошёл маршрут» должно быть утверждением о
+	# балансе, а не тавтологией «враг успел за то время, которое выведено из его
+	# же скорости».
+	_check(_near(move_speed, _NAV_DESIGN_SPEED),
+		"move_speed данных равен скорости баланса %.1f м/с: под неё выведены окно и пороги маршрута" % _NAV_DESIGN_SPEED,
+		"(got %.4f)" % move_speed)
 	# Порог остановки читается с агента, но подставляется и без него: сцена без
 	# агента обязана проверяться теми же утверждениями о поведении, а не
 	# зелёным набором «проверять нечего».
 	var stop_limit := _NAV_TARGET_DISTANCE + 0.1
 	if scene_agent != null:
 		stop_limit = float(scene_agent.get("target_desired_distance")) + 0.1
+	# Окно выведено из маршрута и скорости баланса, а не выбрано: единственный
+	# проход в этом мире — торец стены плюс отступ радиуса агента, навмеш ведёт
+	# в него, и враг обязан уложиться в это окно целиком.
+	var corner := Vector3(_NAV_PASS_X, 0.0, 0.0)
+	var route_m := _route_length(_NAV_ENEMY_START, corner, _NAV_TARGET)
+	var observe_ticks := _route_ticks(_NAV_ENEMY_START, corner, _NAV_TARGET)
+	print("    проход у торца стены x = %.2f м, маршрут %.2f м, окно %d тиков (%.2f с) при %.1f м/с" % [
+		_NAV_PASS_X, route_m, observe_ticks,
+		float(observe_ticks) / float(_TICKS_PER_SECOND), _NAV_DESIGN_SPEED])
 	var start_distance := body.global_position.distance_to(target.global_position)
 	var end_distance := start_distance
 	var worst_speed_error := 0.0
@@ -1068,7 +1134,8 @@ func _test_enemy_navigation() -> void:
 	var exact_frames := 0
 	var far_side_reached := false
 	var crossed_through_wall := false
-	for i in _NAV_OBSERVE_TICKS:
+	var arrived_at := -1
+	for i in observe_ticks:
 		await physics_frame
 		var pos := body.global_position
 		var speed := Vector2(body.velocity.x, body.velocity.z).length()
@@ -1085,6 +1152,8 @@ func _test_enemy_navigation() -> void:
 				worst_on_floor = body.is_on_floor()
 				worst_next = scene_agent.get_next_path_position() if scene_agent != null else Vector3.ZERO
 		end_distance = pos.distance_to(target.global_position)
+		if arrived_at < 0 and end_distance <= stop_limit:
+			arrived_at = i
 		if pos.z > _NAV_WALL_HALF_Z:
 			far_side_reached = true
 		# «Прошёл сквозь» читается по центру тела: оно внутри толщины стены
@@ -1097,7 +1166,7 @@ func _test_enemy_navigation() -> void:
 			crossed_through_wall = true
 
 	print("    старт %.3f м -> финиш %.3f м, худшая ошибка скорости %.4f (максимум %.4f), движущихся кадров %d из %d" % [
-		start_distance, end_distance, worst_speed_error, max_speed, moving_frames, _NAV_OBSERVE_TICKS])
+		start_distance, end_distance, worst_speed_error, max_speed, moving_frames, observe_ticks])
 	print("    худший кадр #%d: скорость %.4f, pos=%s, on_floor=%s, следующая точка пути %s" % [
 		worst_frame, worst_speed, str(worst_pos), str(worst_on_floor), str(worst_next)])
 
@@ -1105,10 +1174,19 @@ func _test_enemy_navigation() -> void:
 		"враг реально шёл: не менее %d кадров с горизонтальной скоростью выше %.1f м/с" % [
 			_NAV_MIN_MOVING_FRAMES, _NAV_MOVING_EPS],
 		"(got %d из %d; без этого проверка скорости ниже ничего бы не утверждала)" % [
-			moving_frames, _NAV_OBSERVE_TICKS])
-	_check(end_distance < start_distance * 0.5,
-		"за 3 с враг сократил дистанцию до цели более чем вдвое",
-		"(%.3f -> %.3f м из %.3f)" % [start_distance, end_distance, start_distance])
+			moving_frames, observe_ticks])
+	# «Вдвое за 3 с» было утверждением о СКОРОСТИ, а не о маршруте: при 6 м/с
+	# враг успевал, при 2 м/с — нет, и красный свет загорался бы на исправном
+	# враге. Теперь утверждение о маршруте: за окно, выведенное из длины пути и
+	# скорости баланса, враг обязан дойти до стоп-дистанции агента. Порог
+	# стоп-дистанции берётся из СЦЕНЫ, а допуск — половина тика при 2 м/с плюс
+	# округление сетки; строгая проверка без допуска стоит в «остановке у цели».
+	_check(end_distance <= stop_limit + _NAV_ARRIVAL_MARGIN,
+		"за окно в %.2f с (%.2f м маршрута при %.1f м/с) враг прошёл весь маршрут: дистанция до цели не больше стоп-дистанции агента" % [
+			float(observe_ticks) / float(_TICKS_PER_SECOND), route_m, _NAV_DESIGN_SPEED],
+		"(%.3f -> %.3f м из %.3f; стоп-дистанция %.3f м, допуск %.2f м; дошёл на тике %d из %d)" % [
+			start_distance, end_distance, start_distance, stop_limit,
+			_NAV_ARRIVAL_MARGIN, arrived_at, observe_ticks])
 	# Скорость проверяется двумя утверждениями, потому что «равна» имеет две
 	# стороны, и обе падают от своих правок: ползти (скорость ниже данных) и
 	# разгоняться сверх данных. Проверять строго «на каждом кадре == move_speed»
@@ -1145,6 +1223,24 @@ func _test_enemy_navigation() -> void:
 	target.remove_from_group("player")
 	world.queue_free()
 	await _physics_frames(2)
+
+
+## Окно наблюдения для маршрута в тиках физики: сколько времени враг обязан
+## уложить, чтобы дойти до цели, и сколько это тиков при 120 тиках в секунду.
+##
+## Число выводится, а не выбирается: длина ломаной `from -> corner -> to` делится
+## на скорость баланса и умножается на запас. При 6 м/с это давало меньше трёх
+## секунд, и «3 с» работало за счёт скорости; при 2 м/с тот же маршрут занимает
+## больше семи, и окно обязано отражать физику нового баланса. Прямая
+## дистанция в тире вместо ломаной — сознательное упрощение: там угол обхода
+## задан сценами тира, а не этим харнессом.
+func _route_length(from: Vector3, corner: Vector3, to: Vector3) -> float:
+	return from.distance_to(corner) + corner.distance_to(to)
+
+
+func _route_ticks(from: Vector3, corner: Vector3, to: Vector3) -> int:
+	return int(ceil(_route_length(from, corner, to) / _NAV_DESIGN_SPEED
+		* _NAV_ROUTE_SAFETY * float(_TICKS_PER_SECOND)))
 
 
 ## Мир навигации: NavigationRegion3D с полом и стеной ВНУТРИ него и синхронный
@@ -1506,10 +1602,28 @@ func _test_range_scene_wiring() -> void:
 		# первый запрос пути ушёл бы в ещё пустую карту.
 		await _physics_frames(_RANGE_SETTLE_TICKS)
 		var settle_distance := enemy_body.global_position.distance_to(player.global_position)
+		# Окно прохода — по тому же правилу, что у мирового мира (Task 4), но
+		# длиной маршрута здесь служит замеренная дистанция до игрока: угол
+		# обхода задан мишенями тира, а не этим харнессом, и выводить его из
+		# геометрии сцены — значит дублировать сцену в проверке.
+		var range_ticks := int(ceil(settle_distance / _NAV_DESIGN_SPEED * _NAV_ROUTE_SAFETY
+			* float(_TICKS_PER_SECOND)))
+		print("    дистанция %.3f м, окно прохода %d тиков (%.2f с) при %.1f м/с" % [
+			settle_distance, range_ticks, float(range_ticks) / float(_TICKS_PER_SECOND),
+			_NAV_DESIGN_SPEED])
 		var end_distance := settle_distance
 		var moving_frames := 0
 		var airborne_frames := 0
-		for i in _RANGE_OBSERVE_TICKS:
+		var arrived_at := -1
+		# Первый тик контакта ищется ВНУТРИ окна прохода, а не отдельным окном
+		# после него: «дошёл и ударил» — одно наблюдение, и разрыв между двумя
+		# окнами оставлял бы щель, в которой враг мог бы дойти, ударить и
+		# разойтись, а проверка об этом не узнала бы.
+		var player_max := float(player.get("max_health"))
+		var health_before := _health(player)
+		var first_contact_tick := -1
+		var contact_ticks := 0
+		for i in range_ticks:
 			await physics_frame
 			var speed := Vector2(enemy_body.velocity.x, enemy_body.velocity.z).length()
 			if speed > _NAV_MOVING_EPS:
@@ -1517,47 +1631,56 @@ func _test_range_scene_wiring() -> void:
 			if not enemy_body.is_on_floor():
 				airborne_frames += 1
 			end_distance = enemy_body.global_position.distance_to(player.global_position)
-		print("    дистанция %.3f -> %.3f м за %d тиков, движущихся кадров %d, вне пола %d" % [
-			settle_distance, end_distance, _RANGE_OBSERVE_TICKS, moving_frames, airborne_frames])
-		_check(moving_frames >= _RANGE_MIN_MOVING_FRAMES,
-			"враг из тира реально шёл: не менее %d кадров со скоростью выше %.1f м/с" % [
-				_RANGE_MIN_MOVING_FRAMES, _NAV_MOVING_EPS],
-			"(got %d из %d)" % [moving_frames, _RANGE_OBSERVE_TICKS])
-		_check(airborne_frames == 0, "враг из тира всю дорогу шёл по полу, а не падал в пустоту",
-			"(кадров вне пола %d)" % airborne_frames)
-		_check(end_distance < settle_distance * _RANGE_APPROACH_RATIO,
-			"за %.1f с враг сократил дистанцию до игрока более чем вдвое" % (
-				float(_RANGE_OBSERVE_TICKS) / float(_TICKS_PER_SECOND)),
-			"(%.3f -> %.3f м)" % [settle_distance, end_distance])
-		_check(enemy.has_method("is_alive") and bool(enemy.call("is_alive")),
-			"враг тира дожил до конца маршрута — целью был узел группы, а не хитбокс")
-
-		print("-- враг из тира ДОХОДИТ до игрока и бьёт касанием")
-		# Наблюдение, а не вычисление: арифметика радиуса контакта выше говорит,
-		# что касание возможно, а здесь видно, что оно ПРОИЗОШЛО в загруженной
-		# сцене. Игрок в харнессе неподвижен (headless не отдаёт ввод), враг
-		# доходит и замирает у него — а тиков контакта не будет никогда, если
-		# стоп-дистанция велика.
-		var player_max := float(player.get("max_health"))
-		var health_before := _health(player)
-		var contact_ticks := 0
-		var contact_tick := -1
-		for i in _RANGE_CONTACT_TICKS:
-			await physics_frame
+			if arrived_at < 0 and end_distance <= stop_at + _NAV_ARRIVAL_MARGIN:
+				arrived_at = i
 			var current := _health(player)
 			if not _near(current, health_before):
 				contact_ticks += 1
 				health_before = current
-				if contact_tick < 0:
-					contact_tick = i
-					break
-		print("    первый тик контакта на кадре %d из %d, тиков за окно %d, HP игрока %.1f из %.1f" % [
-			contact_tick, _RANGE_CONTACT_TICKS, contact_ticks, _health(player), player_max])
-		_check(contact_tick >= 0,
-			"враг из тира дошёл до игрока и нанёс контактный урон — здоровье игрока упало",
-			"(за %d тиков (%.1f с) ни одного тика; HP игрока %.1f из %.1f)" % [
-				_RANGE_CONTACT_TICKS, float(_RANGE_CONTACT_TICKS) / float(_TICKS_PER_SECOND),
-				_health(player), player_max])
+				if first_contact_tick < 0:
+					first_contact_tick = i
+		print("    дистанция %.3f -> %.3f м за %d тиков, движущихся кадров %d, вне пола %d, дошёл на тике %d" % [
+			settle_distance, end_distance, range_ticks, moving_frames, airborne_frames, arrived_at])
+		_check(moving_frames >= _RANGE_MIN_MOVING_FRAMES,
+			"враг из тира реально шёл: не менее %d кадров со скоростью выше %.1f м/с" % [
+				_RANGE_MIN_MOVING_FRAMES, _NAV_MOVING_EPS],
+			"(got %d из %d)" % [moving_frames, range_ticks])
+		_check(airborne_frames == 0, "враг из тира всю дорогу шёл по полу, а не падал в пустоту",
+			"(кадров вне пола %d)" % airborne_frames)
+		# Как и в мировом мире — утверждение о маршруте, а не о скорости: за
+		# выведенное окно враг обязан дойти до стоп-дистанции агента.
+		_check(end_distance <= stop_at + _NAV_ARRIVAL_MARGIN,
+			"за окно в %.2f с (%.2f м маршрута при %.1f м/с) враг тира дошёл до игрока" % [
+				float(range_ticks) / float(_TICKS_PER_SECOND), settle_distance, _NAV_DESIGN_SPEED],
+			"(%.3f -> %.3f м; стоп-дистанция %.3f м, допуск %.2f м; дошёл на тике %d из %d)" % [
+				settle_distance, end_distance, stop_at, _NAV_ARRIVAL_MARGIN, arrived_at, range_ticks])
+		_check(first_contact_tick >= 0,
+			"враг из тира ДОХОДИТ до игрока и нанёс контактный урон — здоровье игрока упало",
+			"(за %d тиков (%.2f с) ни одного тика; дошёл на тике %d, первый тик контакта на тике %d, тиков %d, HP игрока %.1f из %.1f)" % [
+				range_ticks, float(range_ticks) / float(_TICKS_PER_SECOND), arrived_at,
+				first_contact_tick, contact_ticks, _health(player), player_max])
+		_check(enemy.has_method("is_alive") and bool(enemy.call("is_alive")),
+			"враг тира дожил до конца маршрута — целью был узел группы, а не хитбокс")
+
+		print("-- враг, дошедший до игрока, продолжает бить касанием")
+		# Наблюдение, а не вычисление: арифметика радиуса контакта выше говорит,
+		# что касание возможно, а здесь видно, что тики продолжаются после
+		# прихода. Игрок в харнессе неподвижен (headless не отдаёт ввод), враг
+		# стоит у него — и тиков не будет никогда, если стоп-дистанция велика.
+		health_before = _health(player)
+		var still_ticking := -1
+		for i in _RANGE_CONTACT_TICKS:
+			await physics_frame
+			if not _near(_health(player), health_before):
+				still_ticking = i
+				break
+		print("    следующий тик контакта на кадре %d из %d, HP игрока %.1f из %.1f" % [
+			still_ticking, _RANGE_CONTACT_TICKS, _health(player), player_max])
+		_check(still_ticking >= 0,
+			"после прихода тики контакта продолжаются: окно в %.1f с перекрывает каденцию %.1f с" % [
+				float(_RANGE_CONTACT_TICKS) / float(_TICKS_PER_SECOND), _RANGE_CONTACT_INTERVAL],
+			"(за %d тиков ни одного тика; HP игрока %.1f из %.1f)" % [
+				_RANGE_CONTACT_TICKS, _health(player), player_max])
 
 	range_root.queue_free()
 	await physics_frame
@@ -1640,11 +1763,12 @@ func _initialize() -> void:
 		return
 
 	print("-- the values the design fixes for the contact enemy")
-	# Design spec 7.3: the contact enemy has 50 health and 10 contact damage.
-	# Each of these turns red on a single field edit in contact.tres.
-	_check(data.max_health == 50.0, "max_health is 50.0", "(got %.4f)" % data.max_health)
-	_check(data.contact_damage == 10.0, "contact_damage is 10.0", "(got %.4f)" % data.contact_damage)
-	_check(data.move_speed == 6.0, "move_speed is 6.0", "(got %.4f)" % data.move_speed)
+	# Design spec 7.3 as rebalanced: the contact enemy has 60 health and 30
+	# contact damage. Each of these turns red on a single field edit in
+	# contact.tres.
+	_check(data.max_health == 60.0, "max_health is 60.0", "(got %.4f)" % data.max_health)
+	_check(data.contact_damage == 30.0, "contact_damage is 30.0", "(got %.4f)" % data.contact_damage)
+	_check(data.move_speed == 2.0, "move_speed is 2.0", "(got %.4f)" % data.move_speed)
 	_check(data.spawn_interval == 1.5, "spawn_interval is 1.5", "(got %.4f)" % data.spawn_interval)
 	# The kind is what Phase 2 wires movement and the scene off, so a resource
 	# that loads with a default kind must not be able to pass as a contact enemy.

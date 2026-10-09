@@ -12,7 +12,7 @@ extends SceneTree
 ## Every assertion below names the edit that turns it red. The negative halves
 ## are asserted too, not only the green ones: seconds_between_shots() is asked
 ## to follow a *changed* fire rate, and is_valid() is asked to reject each
-## degenerate value in turn. Without those, a method hardcoded to return 0.5
+## degenerate value in turn. Without those, a method hardcoded to return 0.4
 ## and true would sail through a check that only ever saw the good resource.
 ##
 ## Run: godot --headless --path . --script res://tests/weapon_data.gd
@@ -24,12 +24,12 @@ const _PISTOL_PATH := "res://data/weapons/pistol.tres"
 ## than for exact equality.
 const _EPS := 0.0001
 
-## The design fixes the pistol at 120 rounds per minute with 10 rounds in the
-## magazine. 120 rpm is one shot every 0.5 s, so a full magazine is 5 s of
+## The design fixes the pistol at 150 rounds per minute with 18 rounds in the
+## magazine. 150 rpm is one shot every 0.4 s, so a full magazine is 7.2 s of
 ## continuous fire. The assertion recomputes that from the resource's own
 ## fields instead of reading a hardcoded constant, so a future balance edit
 ## that changes the fire rate or the magazine size alone cannot pass unnoticed.
-const _EXPECTED_BURST_SECONDS := 5.0
+const _EXPECTED_BURST_SECONDS := 7.2
 
 var _failures: PackedStringArray = []
 var _checks := 0
@@ -99,16 +99,16 @@ func _initialize() -> void:
 	_check(data.display_name == "Pistol", "display_name is \"Pistol\"",
 		"(got \"%s\")" % data.display_name)
 	_check(data.damage == 30.0, "damage is 30.0", "(got %.4f)" % data.damage)
-	_check(data.rounds_per_minute == 120.0, "rounds_per_minute is 120.0",
+	_check(data.rounds_per_minute == 150.0, "rounds_per_minute is 150.0",
 		"(got %.4f)" % data.rounds_per_minute)
-	_check(data.magazine_size == 10, "magazine_size is 10",
+	_check(data.magazine_size == 18, "magazine_size is 18",
 		"(got %d)" % data.magazine_size)
 	_check(data.reload_time == 1.2, "reload_time is 1.2", "(got %.4f)" % data.reload_time)
-	_check(data.projectile_speed == 40.0, "projectile_speed is 40.0",
+	_check(data.projectile_speed == 70.0, "projectile_speed is 70.0",
 		"(got %.4f)" % data.projectile_speed)
 	_check(data.projectile_radius == 0.08, "projectile_radius is 0.08",
 		"(got %.4f)" % data.projectile_radius)
-	_check(data.projectile_lifetime == 3.0, "projectile_lifetime is 3.0",
+	_check(data.projectile_lifetime == 4.0, "projectile_lifetime is 4.0",
 		"(got %.4f)" % data.projectile_lifetime)
 	# Not written in pistol.tres, so this pins the script's own default: it is
 	# what Task 5 feeds into the projectile material, and nothing else in the
@@ -125,11 +125,11 @@ func _initialize() -> void:
 			data.projectile_speed, 15.0 / data.projectile_speed])
 
 	print("-- derived fire interval")
-	_check(_close(data.seconds_between_shots(), 0.5),
-		"seconds_between_shots() is 0.5 s at 120 rpm", "(got %.6f, tol %.4f)" % [
+	_check(_close(data.seconds_between_shots(), 0.4),
+		"seconds_between_shots() is 0.4 s at 150 rpm", "(got %.6f, tol %.4f)" % [
 			data.seconds_between_shots(), _EPS])
-	# The half above could also be satisfied by a method that always returns
-	# 0.5. Halving the fire rate must halve the interval, which a constant
+	# The 0.4 above could also be satisfied by a method that always returns
+	# 0.4. Halving the fire rate must halve the interval, which a constant
 	# cannot do.
 	_check(_close(_probe({"rounds_per_minute": 60.0}).seconds_between_shots(), 1.0),
 		"seconds_between_shots() follows the fire rate, it is not a constant",
@@ -151,7 +151,7 @@ func _initialize() -> void:
 		"a zero projectile speed is rejected")
 
 	print("-- burst length invariant")
-	# magazine_size * seconds_between_shots(): 10 rounds at one shot per 0.5 s.
+	# magazine_size * seconds_between_shots(): 18 rounds at one shot per 0.4 s.
 	var burst := float(data.magazine_size) * data.seconds_between_shots()
 	_check(_close(burst, _EXPECTED_BURST_SECONDS),
 		"a full magazine is %.1f s of continuous fire" % _EXPECTED_BURST_SECONDS,

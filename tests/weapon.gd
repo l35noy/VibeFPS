@@ -77,12 +77,12 @@ const _PISTOL_SCENE_PATH := "res://pistol.tscn"
 ## The values the design fixes for the pistol. They are restated here so a
 ## balance edit to pistol.tres cannot silently turn the harness into a check of
 ## different numbers than the one it claims to verify.
-const _EXPECTED_MAGAZINE := 10
+const _EXPECTED_MAGAZINE := 18
 const _EXPECTED_RELOAD_TIME := 1.2
-const _EXPECTED_INTERVAL := 0.5
-const _EXPECTED_PROJECTILE_SPEED := 40.0
+const _EXPECTED_INTERVAL := 0.4
+const _EXPECTED_PROJECTILE_SPEED := 70.0
 const _EXPECTED_DAMAGE := 30.0
-const _EXPECTED_LIFETIME := 3.0
+const _EXPECTED_LIFETIME := 4.0
 
 ## Ceiling for every timed wait. Generous, because it only has to keep a broken
 ## pistol from turning the check into a 120 s runner timeout; a healthy pistol
@@ -106,6 +106,11 @@ const _TRAJECTORY_TICKS := 60
 ## whole subtree around the pivot), while float32 noise over 20 m is about
 ## 2e-6 m. Centimetres separate the two with four orders of magnitude to spare.
 const _TRAJECTORY_DRIFT_TOLERANCE := 0.05
+## How far along the line the projectile must actually have travelled for the
+## drift measurement above to mean anything. A projectile that never moved
+## reports a drift of exactly zero and would satisfy the tolerance without
+## having flown at all.
+const _TRAJECTORY_MIN_TRAVEL := 2.0
 ## How many seconds of real frames the startup check watches a weapon that
 ## entered the tree with the button held. Twice the 0.5 s rate limit, so a
 ## pistol that fires on level alone would have spent four rounds.
@@ -247,15 +252,22 @@ func _new_world() -> Node3D:
 	return world
 
 
-## The stand-in for the player's camera. `yaw` turns it, so a shot that follows
-## the fire source's forward axis is distinguishable from one that fires along a
+## The stand-in for the player's camera, and the pistol's fire_rate_source: it
+## decides the AIM and nothing else. `yaw` turns it, so a shot that follows the
+## aim source's forward axis is distinguishable from one that fires along a
 ## hardcoded world axis.
-func _new_muzzle(world: Node3D, yaw := 0.0) -> Node3D:
-	var muzzle := Node3D.new()
-	muzzle.name = "Muzzle"
-	muzzle.rotation.y = yaw
-	world.add_child(muzzle)
-	return muzzle
+##
+## Named for what it is, not for what it looks like: since the barrel split,
+## "Muzzle" in this project means the pistol's Muzzle marker -- the spawn point
+## -- and a fire source wearing that name would read as one. The node this
+## builds is deliberately not called Muzzle, so a scenario cannot accidentally
+## satisfy the barrel lookup with it.
+func _new_aim_source(world: Node3D, yaw := 0.0) -> Node3D:
+	var aim := Node3D.new()
+	aim.name = "AimSource"
+	aim.rotation.y = yaw
+	world.add_child(aim)
+	return aim
 
 
 ## A node added to the tree is not ready the moment add_child() returns: the
@@ -263,12 +275,12 @@ func _new_muzzle(world: Node3D, yaw := 0.0) -> Node3D:
 ## waits for that before measuring anything about a fresh pistol, otherwise
 ## "a fresh pistol has a full magazine" would be a claim about a node whose
 ## _ready() had not run yet.
-func _new_pistol(world: Node3D, data: WeaponData, muzzle: Node3D,
+func _new_pistol(world: Node3D, data: WeaponData, aim: Node3D,
 		with_projectiles := true) -> _PistolProbe:
 	var pistol := _PistolProbe.new()
 	pistol.name = "Pistol"
 	pistol.data = data
-	pistol.fire_rate_source = muzzle
+	pistol.fire_rate_source = aim
 	if with_projectiles:
 		pistol.projectile_scene = _projectile_scene
 	world.add_child(pistol)
@@ -289,9 +301,12 @@ func _watch(pistol: _PistolProbe) -> _Log:
 	return log
 
 
-func _live_projectiles(muzzle: Node3D) -> Array[Projectile]:
+## The projectiles under `parent`. The pistol parents every shot to its AIM
+## source -- that is the lifecycle parent -- so this is how the harness finds
+## live bullets. The spawn point is a different node entirely.
+func _live_projectiles(parent: Node3D) -> Array[Projectile]:
 	var out: Array[Projectile] = []
-	for child in muzzle.get_children():
+	for child in parent.get_children():
 		if child is Projectile:
 			out.append(child as Projectile)
 	return out
@@ -455,7 +470,7 @@ func _test_gate_harness() -> void:
 func _test_starting_magazine() -> void:
 	print("-- start: a fresh pistol has a full magazine and nothing else going on")
 	var world := _new_world()
-	var pistol := await _new_pistol(world, _data, _new_muzzle(world))
+	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
@@ -480,8 +495,8 @@ func _test_starting_magazine() -> void:
 func _test_single_shot() -> void:
 	print("-- one shot: one round, one signal, one flying projectile")
 	var world := _new_world()
-	var muzzle := _new_muzzle(world)
-	var pistol := await _new_pistol(world, _data, muzzle)
+	var aim := _new_aim_source(world)
+	var pistol := await _new_pistol(world, _data, aim)
 	var log := _watch(pistol)
 
 	_check(pistol.try_fire(), "try_fire() reports the shot it made")
@@ -490,11 +505,12 @@ func _test_single_shot() -> void:
 	_check(log.fired == 1, "fired arrived exactly once", "(got %d)" % log.fired)
 	_check(log.magazine.size() == 1,
 		"magazine_changed arrived once for the shot", "(got %d)" % log.magazine.size())
-	_check(log.magazine.size() == 1 and log.last_magazine() == Vector2i(9, 10),
+	_check(log.magazine.size() == 1
+			and log.last_magazine() == Vector2i(_EXPECTED_MAGAZINE - 1, _EXPECTED_MAGAZINE),
 		"magazine_changed carries the new count and the capacity",
 		"(got %s)" % str(log.magazine))
 
-	var bullets := _live_projectiles(muzzle)
+	var bullets := _live_projectiles(aim)
 	_check(bullets.size() == 1, "exactly one projectile node was spawned",
 		"(got %d)" % bullets.size())
 	if bullets.size() == 1:
@@ -517,10 +533,10 @@ func _test_single_shot() -> void:
 		_check(moved.length() > 0.5,
 			"the projectile is flying, so launch() was called on a node already in the tree",
 			"(moved %.3f m)" % moved.length())
-		_check(moved.normalized().dot(-muzzle.global_transform.basis.z) > 0.99,
+		_check(moved.normalized().dot(-aim.global_transform.basis.z) > 0.99,
 			"it leaves along the fire source's forward axis",
 			"(%.3f m along %.3f m forward)" % [
-				moved.length(), moved.normalized().dot(-muzzle.global_transform.basis.z)])
+				moved.length(), moved.normalized().dot(-aim.global_transform.basis.z)])
 	world.free()
 
 
@@ -531,11 +547,11 @@ func _test_shot_follows_fire_source() -> void:
 	print("-- direction: the shot follows the fire source, not a world axis")
 	var world := _new_world()
 	# -90 degrees of yaw turns the forward axis from -Z into +X.
-	var muzzle := _new_muzzle(world, -PI / 2.0)
-	var pistol := await _new_pistol(world, _data, muzzle)
+	var aim := _new_aim_source(world, -PI / 2.0)
+	var pistol := await _new_pistol(world, _data, aim)
 	_check(pistol.try_fire(), "the shot was fired")
 
-	var bullets := _live_projectiles(muzzle)
+	var bullets := _live_projectiles(aim)
 	_check(bullets.size() == 1, "one projectile was spawned", "(got %d)" % bullets.size())
 	if bullets.size() == 1:
 		var bullet := bullets[0]
@@ -592,6 +608,7 @@ func _test_shot_keeps_its_line_when_the_aim_source_moves() -> void:
 	pivot.position = Vector3(2.0, 0.0, 0.0)
 
 	var worst := 0.0
+	var travelled := 0.0
 	for i in _TRAJECTORY_TICKS:
 		await physics_frame
 		if not is_instance_valid(bullet):
@@ -600,7 +617,19 @@ func _test_shot_keeps_its_line_when_the_aim_source_moves() -> void:
 		# Distance from the line, not from the origin: the shot is SUPPOSED to
 		# travel along `line`, so only the sideways component is drift.
 		worst = maxf(worst, (offset - line * offset.dot(line)).length())
-	print("    worst sideways drift %.4f m over %d physics ticks" % [worst, _TRAJECTORY_TICKS])
+		travelled = maxf(travelled, offset.dot(line))
+	print("    worst sideways drift %.4f m, forward travel %.3f m over %d physics ticks" % [
+		worst, travelled, _TRAJECTORY_TICKS])
+	# Precondition, and it is load-bearing. Drift of zero is what a CORRECT shot
+	# looks like -- and also what a projectile that never moved looks like: the
+	# loop would sample one position forever and pass the tolerance below for
+	# the wrong reason. So the flight is proved first, along the line the bullet
+	# is supposed to follow. Half a second at 40 m/s is ~20 m; the threshold is
+	# 2.0 m, far below that and far above the sub-millimetre distance a frozen
+	# bullet accumulates.
+	_check(travelled > _TRAJECTORY_MIN_TRAVEL,
+		"precondition: the projectile really flew, so a drift of zero means a straight shot",
+		"(travelled %.3f m along the line, want > %.1f m)" % [travelled, _TRAJECTORY_MIN_TRAVEL])
 	_check(worst <= _TRAJECTORY_DRIFT_TOLERANCE,
 		"the shot flew straight: moving the aim source's parent did not bend it",
 		"(worst sideways drift %.4f m, tolerance %.3f m)" % [worst, _TRAJECTORY_DRIFT_TOLERANCE])
@@ -705,7 +734,7 @@ func _test_no_shot_while_the_button_is_down_on_entry() -> void:
 	var pistol := _PistolProbe.new()
 	pistol.name = "Pistol"
 	pistol.data = _data
-	pistol.fire_rate_source = _new_muzzle(world)
+	pistol.fire_rate_source = _new_aim_source(world)
 	pistol.projectile_scene = _projectile_scene
 	var log := _watch(pistol)
 	world.add_child(pistol)
@@ -743,19 +772,20 @@ func _test_no_shot_while_the_button_is_down_on_entry() -> void:
 	world.free()
 
 
-## Ten rounds at the design's rate, then the eleventh attempt: refused, with the
-## magazine untouched. The pistol then reloads itself -- the player does not have
-## to ask -- and the held fire button produces nothing for the whole reload,
-## which is the case the plan's review section calls out: an empty magazine and
-## a fire press in the same frame must neither shoot nor restart the reload.
+## A full magazine's worth of rounds at the design's rate, then the attempt past
+## the last one: refused, with the magazine untouched. The pistol then reloads
+## itself -- the player does not have to ask -- and the held fire button
+## produces nothing for the whole reload, which is the case the plan's review
+## section calls out: an empty magazine and a fire press in the same frame must
+## neither shoot nor restart the reload.
 func _test_empty_magazine_and_automatic_reload() -> void:
-	print("-- ten rounds, the empty magazine, and the reload the pistol starts itself")
+	print("-- full magazine, the empty magazine, and the reload the pistol starts itself")
 	var world := _new_world()
-	var muzzle := _new_muzzle(world)
-	var pistol := await _new_pistol(world, _data, muzzle)
+	var aim := _new_aim_source(world)
+	var pistol := await _new_pistol(world, _data, aim)
 	var log := _watch(pistol)
 
-	# The fire action is held from the first frame, so the ten rounds are spent
+	# The fire action is held from the first frame, so the whole magazine is spent
 	# on the real input path rather than by calling try_fire() behind the
 	# pistol's back. The release before it is the harness's half of the
 	# arming latch (see _settle_fire_released): the pistol has to see the
@@ -772,11 +802,11 @@ func _test_empty_magazine_and_automatic_reload() -> void:
 	_check(pistol.current_mag() == 0, "the magazine is empty",
 		"(got %d)" % pistol.current_mag())
 	_check(not pistol.can_fire(), "can_fire() is false on an empty magazine")
-	_check(not pistol.try_fire(), "the eleventh try_fire() is refused")
+	_check(not pistol.try_fire(), "the try_fire() past the last round is refused")
 	_check(pistol.current_mag() == 0, "the refused shot left the magazine at 0",
 		"(got %d)" % pistol.current_mag())
 	_check(log.fired == _EXPECTED_MAGAZINE,
-		"no eleventh round left the magazine", "(got %d signals)" % log.fired)
+		"no round past the last one left the magazine", "(got %d signals)" % log.fired)
 
 	var started := await _await_until(func() -> bool: return log.reload_started > 0, 5.0)
 	_check(started, "the empty magazine starts a reload without being asked")
@@ -809,7 +839,7 @@ func _test_empty_magazine_and_automatic_reload() -> void:
 		_check(not pistol.is_reloading(), "the pistol is no longer reloading")
 		_check(log.reload_finished == 1, "reload_finished arrived exactly once",
 			"(got %d)" % log.reload_finished)
-		_check(log.last_magazine() == Vector2i(10, 10),
+		_check(log.last_magazine() == Vector2i(_EXPECTED_MAGAZINE, _EXPECTED_MAGAZINE),
 			"magazine_changed announced the refilled magazine",
 			"(got %s)" % str(log.magazine))
 		_check(pistol.can_fire(), "the pistol can shoot again after the reload")
@@ -833,20 +863,20 @@ func _test_empty_magazine_and_automatic_reload() -> void:
 func _test_reload_blocks_firing_and_cannot_be_restarted() -> void:
 	print("-- reloading: no rounds from a partly full magazine, and no restart")
 	var world := _new_world()
-	var muzzle := _new_muzzle(world)
-	var pistol := await _new_pistol(world, _data, muzzle)
+	var aim := _new_aim_source(world)
+	var pistol := await _new_pistol(world, _data, aim)
 	var log := _watch(pistol)
 
 	pistol.try_fire()
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"precondition: nine rounds are left", "(got %d)" % pistol.current_mag())
+		"precondition: a partly spent magazine is left", "(got %d)" % pistol.current_mag())
 	_check(pistol.start_reload(), "a spent magazine accepts a reload")
 	_check(pistol.is_reloading(), "the pistol reports itself reloading")
 	_check(log.reload_started == 1, "reload_started arrived once", "(got %d)" % log.reload_started)
 
-	# Nine rounds are in there and the rate limit expires half a second into a
+	# The magazine still has rounds in it and the rate limit expires well inside a
 	# 1.2 s reload, so without the is_reloading() rule in can_fire() this window
-	# hands the player a round at about 0.5 s -- before the restart attempt
+	# hands the player a round one interval in -- before the restart attempt
 	# below, so the two defects cannot mask each other. The release first is the
 	# harness's half of the arming latch: this pistol was created with the
 	# button already up and has to be seen holding it that way.
@@ -857,7 +887,8 @@ func _test_reload_blocks_firing_and_cannot_be_restarted() -> void:
 	_check(halfway, "precondition: half the reload went by with the button still held")
 	_check(log.fired == 1,
 		"a held fire button spends no rounds while reloading, even with rounds left",
-		"(got %d shots, the rate limit expired 0.5 s into the reload)" % log.fired)
+		"(got %d shots, the rate limit expired %.1f s into the reload)" % [
+			log.fired, _EXPECTED_INTERVAL])
 
 	# Now halfway in, ask for a second reload.
 	var restart_at := _now_ms()
@@ -899,15 +930,16 @@ func _test_reload_blocks_firing_and_cannot_be_restarted() -> void:
 
 ## The rate limit is in seconds and comes from the weapon data, so it is
 ## measured in seconds. A limit counted in frames would move with the frame
-## rate, and 120 rpm has to stay 120 rpm on a 240 Hz display.
+## rate, and the shipped fire rate has to stay the shipped fire rate on a
+## 240 Hz display.
 func _test_fire_rate() -> void:
-	print("-- rate limit: the interval is the data's 0.5 s, counted in seconds")
+	print("-- rate limit: the interval is the data's %.1f s, counted in seconds" % _EXPECTED_INTERVAL)
 	var world := _new_world()
-	var pistol := await _new_pistol(world, _data, _new_muzzle(world))
+	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 
 	_check(is_equal_approx(_data.seconds_between_shots(), _EXPECTED_INTERVAL),
-		"precondition: the shipped data asks for one shot per 0.5 s",
+		"precondition: the shipped data asks for one shot per %.1f s" % _EXPECTED_INTERVAL,
 		"(got %.4f s)" % _data.seconds_between_shots())
 	var start := _now_ms()
 	_check(pistol.try_fire(), "the first shot is allowed")
@@ -946,7 +978,7 @@ func _test_fire_rate() -> void:
 func _test_input_gate() -> void:
 	print("-- input gate: the fire action does not get around the cursor being free")
 	var world := _new_world()
-	var pistol := await _new_pistol(world, _data, _new_muzzle(world))
+	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 	_check(pistol.get_script() == _PistolProbe,
 		"precondition: the pistol under test runs the harness probe script")
@@ -991,7 +1023,7 @@ func _test_input_gate() -> void:
 func _test_full_magazine_has_nothing_to_reload() -> void:
 	print("-- full magazine: nothing to reload, and that is not a failure of the pistol")
 	var world := _new_world()
-	var pistol := await _new_pistol(world, _data, _new_muzzle(world))
+	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 	_check(not pistol.start_reload(), "a full magazine refuses the reload")
 	_check(log.reload_started == 0, "no reload was announced",
@@ -1009,7 +1041,7 @@ func _test_full_magazine_has_nothing_to_reload() -> void:
 func _test_scene_change_reset() -> void:
 	print("-- scene change: the weapon is reset, so a lobby trip costs no rounds")
 	var world := _new_world()
-	var pistol := await _new_pistol(world, _data, _new_muzzle(world))
+	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 
 	pistol.try_fire()
@@ -1024,7 +1056,7 @@ func _test_scene_change_reset() -> void:
 		"(got %d)" % pistol.current_mag())
 	_check(not pistol.is_reloading(), "the reload is cancelled")
 	_check(pistol.can_fire(), "the pistol can shoot again")
-	_check(log.last_magazine() == Vector2i(10, 10),
+	_check(log.last_magazine() == Vector2i(_EXPECTED_MAGAZINE, _EXPECTED_MAGAZINE),
 		"the reset is announced, so a HUD is not left showing a stale count",
 		"(got %s)" % str(log.magazine))
 	_check(log.reload_finished == 0,
@@ -1039,15 +1071,15 @@ func _test_scene_change_reset() -> void:
 func _test_invalid_data_blocks_firing() -> void:
 	print("-- degenerate data: a zero magazine size blocks firing instead of dividing by zero")
 	var world := _new_world()
-	var muzzle := _new_muzzle(world)
+	var aim := _new_aim_source(world)
 
-	var stock := await _new_pistol(world, _data, muzzle)
+	var stock := await _new_pistol(world, _data, aim)
 	_check(stock.can_fire(),
 		"precondition: the shipped data lets the pistol fire, so the refusals below mean something")
 
 	var zero_mag := WeaponData.new()
 	zero_mag.magazine_size = 0
-	var pistol := await _new_pistol(world, zero_mag, muzzle)
+	var pistol := await _new_pistol(world, zero_mag, aim)
 	var log := _watch(pistol)
 	_check(pistol.current_mag() == 0,
 		"a zero-capacity magazine starts empty", "(got %d)" % pistol.current_mag())
@@ -1059,7 +1091,7 @@ func _test_invalid_data_blocks_firing() -> void:
 
 	var zero_rate := WeaponData.new()
 	zero_rate.rounds_per_minute = 0.0
-	var rate_pistol := await _new_pistol(world, zero_rate, muzzle)
+	var rate_pistol := await _new_pistol(world, zero_rate, aim)
 	_check(not rate_pistol.can_fire(),
 		"a zero fire rate is refused rather than dividing by zero")
 	world.free()
@@ -1072,7 +1104,7 @@ func _test_invalid_data_blocks_firing() -> void:
 func _test_missing_projectile_scene_keeps_the_round() -> void:
 	print("-- failed instantiation: the round survives the shot that never happened")
 	var world := _new_world()
-	var pistol := await _new_pistol(world, _data, _new_muzzle(world), false)
+	var pistol := await _new_pistol(world, _data, _new_aim_source(world), false)
 	var log := _watch(pistol)
 	_check(pistol.projectile_scene == null,
 		"precondition: this pistol has no projectile scene at all")

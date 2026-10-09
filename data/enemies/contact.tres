@@ -5,9 +5,9 @@
 [resource]
 script = ExtResource("1_script")
 display_name = "Contact"
-max_health = 50.0
-contact_damage = 10.0
-move_speed = 6.0
+max_health = 60.0
+contact_damage = 30.0
+move_speed = 2.0
 spawn_interval = 1.5
 color = Color(0.8, 0.25, 0.25, 1)
 kind = 0
