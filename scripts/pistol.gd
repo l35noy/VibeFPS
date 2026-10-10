@@ -19,7 +19,7 @@ extends Node3D
 ##    бесконечно. Поэтому `start_reload()` отказывает, когда перезарядка уже
 ##    идёт, и не трогает таймер.
 ## 3. Темп стрельбы — это секунды (`data.seconds_between_shots()`), а не
-##    кадры. 120 выстр./мин это один выстрел за 0.5 с при любой частоте кадров;
+##    кадры. 150 выстр./мин это один выстрел за 0.4 с при любой частоте кадров;
 ##    счётчик кадров на 240 Гц превратил бы пистолет в автомат.
 ## 4. `_process`, а не физический тик: стрельба — игровое действие с частотой
 ##    кадров рендера, а не часть физической симуляции. Таймеры при этом всё
@@ -287,12 +287,14 @@ func _instantiate_projectile() -> Node3D:
 			instance.free()
 		return null
 	# Характеристики приходят из данных оружия, а не из значений сцены: одно
-	# место, откуда берётся урон и скорость пули.
+	# место, откуда берутся урон, скорость пули и внешний вид снаряда.
 	if projectile is Projectile:
 		var bullet := projectile as Projectile
 		bullet.speed = data.projectile_speed
 		bullet.damage = data.damage
 		bullet.lifetime = data.projectile_lifetime
+		bullet.radius = data.projectile_radius
+		bullet.color = data.projectile_color
 	var muzzle := _muzzle()
 	# Точка старта и направление — два разных узла (см. _spawn_point()).
 	var spawn := _spawn_point()

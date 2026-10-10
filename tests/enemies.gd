@@ -152,6 +152,72 @@ const _NAV_TARGET_DISTANCE := 0.5
 const _NAV_DRIFT_EPS := 0.02
 
 # --------------------------------------------------------------------------
+# Phase 3 Task 5: смерть → лобби, очки за убийство врага
+# --------------------------------------------------------------------------
+
+## Пробный GameState: тот же класс, что у автозагрузки (Task 3), но с
+## записывающим `return_to_lobby` и подменённым `scene_changer`. Смерть игрока
+## идёт через него — настоящий change_scene_to_file снёс бы это же дерево.
+##
+## `return_to_lobby` переопределён, потому что reason не доходит до
+## `scene_changer` (GameState зовёт его только с путём сцены): «смерть просит
+## лобби» и «смерть просит лобби ПО ПРИЧИНЕ смерти» — разные утверждения, и
+## второе видно только изнутри самого вызова.
+class _RecordingGameState extends GameState:
+	var lobby_reasons: PackedStringArray = []
+
+	func return_to_lobby(reason: String) -> void:
+		lobby_reasons.append(reason)
+		super.return_to_lobby(reason)
+
+
+## Пробный GameState, пока он стоит в /root. null означает «в root его нет» —
+## ровно то состояние, которого требуют fallback-секция смерти и все проверки
+## врага, не ждущие очков.
+var _probe_game_state: GameState = null
+## Пути, запрошенные у подменённого scene_changer, в порядке вызова.
+var _lobby_changes: PackedStringArray = []
+
+
+## Записывающая заглушка смены сцены: фиксирует запрос и ничего не меняет.
+func _fake_scene_changer(path: String) -> void:
+	_lobby_changes.append(path)
+
+
+## Ставит пробный GameState в /root. Имя "GameState" — часть контракта: и
+## player.gd, и enemy_contact.gd находят его по пути /root/GameState, а не по
+## ссылке, поэтому переименование узла сломало бы обе проверки.
+func _install_probe_game_state() -> GameState:
+	var gs := _RecordingGameState.new()
+	gs.name = "GameState"
+	gs.scene_changer = _fake_scene_changer
+	root.add_child(gs)
+	_probe_game_state = gs
+	return gs
+
+
+## Убирает пробный GameState из /root. Обязательно ДО секций, которым нужен
+## fallback: живой /root/GameState меняет контракт смерти.
+func _remove_probe_game_state() -> void:
+	if _probe_game_state != null and is_instance_valid(_probe_game_state):
+		_probe_game_state.queue_free()
+	_probe_game_state = null
+	await physics_frame
+
+
+## PackedStringArray vs Array по содержимому: Godot не считает два разных
+## контейнера равными, поэтому `packed == ["death"]` было бы false даже при
+## совпадении содержимого.
+func _packed_strings_eq(packed: PackedStringArray, expected: Array) -> bool:
+	if packed.size() != expected.size():
+		return false
+	for i in packed.size():
+		if packed[i] != expected[i]:
+			return false
+	return true
+
+
+# --------------------------------------------------------------------------
 # Task 5: проводка тира
 # --------------------------------------------------------------------------
 
@@ -307,6 +373,12 @@ func _spawn_and_wait(node: Node) -> bool:
 func _test_player_health() -> void:
 	print("-- Здоровье игрока (Task 2)")
 
+	# Fallback-контракт смерти: без /root/GameState смерть обязана вернуть игрока
+	# на точку появления с полным здоровьем (см. Phase 3 Task 5). Проверка имеет
+	# смысл только пока GameState в root нет.
+	_check(root.get_node_or_null("GameState") == null,
+		"precondition: в /root нет GameState — смерть ниже идёт по fallback-ветке (респавн на месте)")
+
 	_died_count = 0
 	_health_at_death = -1.0
 	_alive_at_death = true
@@ -404,7 +476,7 @@ func _test_player_health() -> void:
 	_check(_near(_health(player), 10.0), "после девяти тиков остаётся 10 здоровья",
 		"(got %.4f)" % _health(player))
 
-	print("-- десятое попадание: смерть и немедленный респавн")
+	print("-- десятое попадание: смерть и немедленный респавн (fallback без GameState)")
 	player.call("take_damage", 10.0)
 	_check(_died_count == 1, "сигнал died ровно один", "(got %d)" % _died_count)
 	_check(not _alive_at_death, "в момент сигнала died игрок уже мёртв (is_alive() == false)",
@@ -468,6 +540,129 @@ func _find_health_event(value: float) -> Vector2:
 		if _near(event.x, value):
 			return event
 	return Vector2(-1.0, -1.0)
+
+
+## Смерть при живом GameState: возврат в лобби причиной "death", а не респавн на
+## месте. Отсутствие респавна наблюдается по состоянию игрока: если бы
+## `_respawn(true)` отработал, здоровье вернулось бы к max_health, а игрок снова
+## стал бы живым — оба признака обязаны остаться прежними.
+func _test_death_returns_to_lobby() -> void:
+	print("-- смерть → лобби при живом GameState (Phase 3 Task 5)")
+
+	_check(root.get_node_or_null("GameState") == null,
+		"precondition: до установки GameState в /root его нет — смерть ниже пойдёт по новому контракту")
+
+	var world := _new_world()
+	_add_floor(world)
+	var packed: PackedScene = load(_PLAYER_PATH)
+	if packed == null:
+		_bail("cannot load %s for the death contract test" % _PLAYER_PATH)
+		return
+	var player := packed.instantiate()
+	if not await _spawn_in(world, player, Vector3(0.0, 0.0, 0.0)):
+		_bail("%s never became node-ready for the death contract test" % _PLAYER_PATH)
+		return
+
+	_lobby_changes.clear()
+	var gs := _install_probe_game_state()
+	var spy := gs as _RecordingGameState
+	await physics_frame
+	_check(root.get_node_or_null("GameState") == gs,
+		"precondition: пробный GameState резолвится как /root/GameState")
+
+	_died_count = 0
+	_health_at_death = -1.0
+	_alive_at_death = true
+	player.died.connect(_on_player_died.bind(player))
+	var max_health := float(player.get("max_health"))
+	player.call("take_damage", max_health)
+
+	_check(_died_count == 1, "смерть испускает died ровно один раз", "(got %d)" % _died_count)
+	_check(_near(_health_at_death, 0.0), "в момент сигнала died здоровье игрока равно 0.0",
+		"(got %.4f)" % _health_at_death)
+	_check(not _alive_at_death, "в момент сигнала died игрок уже мёртв")
+	_check(spy != null and _packed_strings_eq(spy.lobby_reasons, ["death"]),
+		"смерть возвращает в лобби с причиной \"death\"",
+		"(получено %s)" % ("нет пробного GameState" if spy == null else str(spy.lobby_reasons)))
+	_check(_packed_strings_eq(_lobby_changes, ["res://lobby.tscn"]),
+		"смерть просит у scene_changer ровно res://lobby.tscn",
+		"(получено %s)" % str(_lobby_changes))
+	_check(_near(_health(player), 0.0),
+		"смерть НЕ респавнит на месте: здоровье остаётся 0.0, а не max_health",
+		"(got %.4f, max_health %.4f)" % [_health(player), max_health])
+	_check(not _alive(player), "смерть НЕ респавнит на месте: игрок остаётся мёртвым")
+
+	player.queue_free()
+	await physics_frame
+	await _remove_probe_game_state()
+	_check(root.get_node_or_null("GameState") == null,
+		"после секции пробный GameState убран из /root — fallback снова доступен")
+	world.queue_free()
+	await physics_frame
+
+
+## Убийство врага начисляет ровно POINTS_PER_KILL очков через GameState и
+## ровно один раз.
+func _test_kill_awards_points() -> void:
+	print("-- очки за убийство врага (Phase 3 Task 5)")
+
+	_check(root.get_node_or_null("GameState") == null,
+		"precondition: до установки GameState в /root его нет")
+
+	var world := _new_world()
+	_add_floor(world)
+	var enemy_packed: PackedScene = load(_ENEMY_PATH)
+	if enemy_packed == null:
+		_bail("cannot load %s for the kill-points test" % _ENEMY_PATH)
+		return
+	var player_packed: PackedScene = load(_PLAYER_PATH)
+	if player_packed == null:
+		_bail("cannot load %s for the kill-points test" % _PLAYER_PATH)
+		return
+	# Игрок в мире — не украшение: враг ищет цель по группе "player", и без неё
+	# секция проверяла бы одиночный узел, а не убийство в бою.
+	var player := player_packed.instantiate()
+	if not await _spawn_in(world, player, Vector3(0.0, 0.0, 0.0)):
+		_bail("%s never became node-ready for the kill-points test" % _PLAYER_PATH)
+		return
+	var enemy := enemy_packed.instantiate()
+	if not await _spawn_in(world, enemy, Vector3(6.0, 0.0, 0.0)):
+		_bail("%s never became node-ready for the kill-points test" % _ENEMY_PATH)
+		return
+
+	_lobby_changes.clear()
+	var gs := _install_probe_game_state()
+	await physics_frame
+	_check(root.get_node_or_null("GameState") == gs,
+		"precondition: пробный GameState резолвится как /root/GameState")
+	_check(gs.points == 0, "precondition: счёт начинается с нуля", "(got %d)" % gs.points)
+
+	var data := enemy.get("data") as EnemyData
+	if data == null:
+		_bail("the enemy in the kill-points test carries no EnemyData")
+		return
+	_enemy_died_count = 0
+	_enemy_health_at_death = -1.0
+	_enemy_alive_at_death = true
+	enemy.died.connect(_on_enemy_died.bind(enemy))
+
+	enemy.call("take_damage", float(data.max_health))
+
+	_check(_enemy_died_count == 1, "враг умирает ровно один раз, died ровно один",
+		"(got %d)" % _enemy_died_count)
+	_check(gs.points == gs.POINTS_PER_KILL,
+		"убийство врага начисляет ровно POINTS_PER_KILL очков",
+		"(points %d, POINTS_PER_KILL %d)" % [gs.points, gs.POINTS_PER_KILL])
+	_check(gs.points == 10, "очков ровно 10", "(got %d)" % gs.points)
+	# Повторный урон по мёртвому врагу не начисляет очки второй раз: смерть
+	# наблюдается ровно один раз (см. _die() в enemy_contact.gd).
+	enemy.call("take_damage", float(data.max_health))
+	_check(gs.points == 10, "урон по мёртвому врагу не начисляет очки повторно",
+		"(got %d)" % gs.points)
+
+	await _remove_probe_game_state()
+	world.queue_free()
+	await physics_frame
 
 
 # --------------------------------------------------------------------------
@@ -1746,8 +1941,26 @@ func _hurtbox_reach(shape: Shape3D) -> float:
 	return -1.0
 
 
+## The engine registers GameState/SaveSystem as project autoloads
+## (project.godot, Task 6) and installs nodes of those names under /root even in
+## --script mode. The whole harness relies on /root/GameState being ABSENT
+## (fallback death contract) or on a probe it installs itself; the autoload would
+## shadow the probe (Godot renames the later node when the name is taken) and
+## hand player.gd the real change_scene_to_file, which would swap in lobby.tscn
+## and add a second group-"player" node. Drop them first, so /root/GameState
+## means what the harness says it means. Immediate free, not queue_free: the
+## name must be free before the probe is added.
+func _drop_autoloads() -> void:
+	for autoload_name in ["GameState", "SaveSystem"]:
+		var node := root.get_node_or_null(autoload_name)
+		if node != null:
+			root.remove_child(node)
+			node.free()
+
+
 func _initialize() -> void:
 	print("=== enemies ===")
+	_drop_autoloads()
 
 	print("-- %s must load as an EnemyData" % _CONTACT_PATH)
 	var res: Resource = load(_CONTACT_PATH)
@@ -1789,7 +2002,9 @@ func _initialize() -> void:
 		"a zero spawn interval is rejected")
 
 	await _test_player_health()
+	await _test_death_returns_to_lobby()
 	await _test_contact_enemy()
+	await _test_kill_awards_points()
 	await _test_enemy_navigation()
 	await _test_range_scene_wiring()
 

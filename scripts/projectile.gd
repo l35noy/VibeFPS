@@ -31,6 +31,15 @@ signal hit_something(target: Node)
 ## снаряда, улетевшего в пустоту на шум в приложении.
 @export var lifetime: float = 3.0
 
+## Радиус шлейфа в метрах. Приходит из данных оружия
+## (WeaponData.projectile_radius): след показывает, где летит пуля, поэтому
+## его размер обязан повторять размер снаряда.
+@export var radius: float = 0.08
+## Цвет шлейфа. Приходит из данных оружия (WeaponData.projectile_color):
+## след делает оружие узнаваемым на глаз — жёлтый автомат не спутать с
+## серым пистолетом.
+@export var color: Color = Color(0.15, 0.15, 0.15)
+
 ## Слой 5 — `projectile`.
 const _COLLISION_LAYER := 1 << 4
 ## Маска 1 | 4: мировая геометрия (слой 1) и хитбоксы врага (слой 4). Слоя
@@ -40,7 +49,6 @@ const _COLLISION_MASK := (1 << 0) | (1 << 3)
 
 ## Прозрачность шлейфа в начале полёта и её потолок.
 const _TRAIL_PEAK_ALPHA := 0.6
-const _TRAIL_COLOR := Color(0.15, 0.15, 0.15)
 
 ## Направление нормализовано один раз здесь; дальше оно только читается.
 var _direction := Vector3.FORWARD
@@ -133,8 +141,12 @@ func _spend() -> void:
 
 ## Шлейф: дочерний MeshInstance3D, который бледнеет по времени жизни.
 ##
-## Сцена может задать геометрию и цвет шлейфа сама (Task 5 задаёт их из данных
-## оружия); если её нет, снаряд остаётся рабочим самодостаточным. Затухание —
+## Вид шлейфа приходит из данных оружия (`radius` и `color` этого снаряда),
+## а не из литералов: оружие с другим `projectile_radius`/`projectile_color`
+## должно менять след не через правку кода, а через свой .tres. Сцена может
+## дать свою заготовку шлейфа (узел `Trail` с мешем и материалом), но её
+## геометрия и цвет здесь приводятся к данным оружия — локальной копией,
+## чтобы не мутировать общий для всех инстансов ресурс .tscn. Затухание —
 ## уменьшение `albedo_color.a` каждый кадр, а НЕ Tween: Tween продолжает
 ## работать и после попадания, а шлейф обязан умирать вместе со снарядом, и
 ## иначе в месте попадания оставался бы висящий в воздухе полупрозрачный шар.
@@ -147,21 +159,31 @@ func _setup_trail() -> void:
 	if _trail == null:
 		_trail = MeshInstance3D.new()
 		_trail.name = "Trail"
-		var mesh := SphereMesh.new()
-		mesh.radius = 0.08
-		mesh.height = 0.16
-		_trail.mesh = mesh
 		add_child(_trail)
+	var sphere := _trail.mesh as SphereMesh
+	if sphere == null:
+		sphere = SphereMesh.new()
+		_trail.mesh = sphere
+	elif not sphere.resource_local_to_scene:
+		# Меш из .tscn — ресурс, общий для всех инстансов сцены: копия нужна,
+		# иначе правка радиуса здесь поменяла бы след у каждого снаряда.
+		sphere = sphere.duplicate() as SphereMesh
+		_trail.mesh = sphere
+	sphere.radius = radius
+	sphere.height = radius * 2.0
 	var mat := _trail.material_override as StandardMaterial3D
 	if mat == null:
 		mat = StandardMaterial3D.new()
 		_trail.material_override = mat
-		var color := _TRAIL_COLOR
-		color.a = _TRAIL_PEAK_ALPHA
-		mat.albedo_color = color
+	elif not mat.resource_local_to_scene:
+		# Та же причина, что у меша: материал .tscn общий, а у каждого оружия
+		# свой цвет следа.
+		mat = mat.duplicate() as StandardMaterial3D
+		_trail.material_override = mat
+	var trail_color := color
+	trail_color.a = _TRAIL_PEAK_ALPHA
+	mat.albedo_color = trail_color
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	if is_zero_approx(mat.albedo_color.a):
-		mat.albedo_color.a = _TRAIL_PEAK_ALPHA
 	_trail_material = mat
 
 

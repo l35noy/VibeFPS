@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon_data.gd" id="1_script"]
+
+; Временный баланс владельца (2026-10-10): числа могут поменяться при финальной
+; настройке. Машинно их читают оружейная сцена (auto.tscn) и тест
+; tests/auto_weapon.gd, а не какие-либо хардкоды.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Auto"
+damage = 15.0
+rounds_per_minute = 300.0
+magazine_size = 36
+reload_time = 1.6
+projectile_speed = 70.0
+projectile_radius = 0.06
+projectile_lifetime = 3.0
+projectile_color = Color(0.95, 0.75, 0.15, 1)
+price = 300

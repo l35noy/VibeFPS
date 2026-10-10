@@ -98,6 +98,11 @@ func _initialize() -> void:
 	# Each of these turns red on a single field edit in pistol.tres.
 	_check(data.display_name == "Pistol", "display_name is \"Pistol\"",
 		"(got \"%s\")" % data.display_name)
+	# pistol.tres does not set price, so this pins the script default: the
+	# starting weapon is free, every purchasable one (auto) sets an explicit
+	# price in its own .tres.
+	_check(data.price == 0, "price is 0 for the starting weapon",
+		"(got %d)" % data.price)
 	_check(data.damage == 30.0, "damage is 30.0", "(got %.4f)" % data.damage)
 	_check(data.rounds_per_minute == 150.0, "rounds_per_minute is 150.0",
 		"(got %.4f)" % data.rounds_per_minute)

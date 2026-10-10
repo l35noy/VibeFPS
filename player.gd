@@ -28,6 +28,11 @@ signal died()
 ## последствием ошибки, а не случайности.
 @export var max_health: float = 100.0
 
+## Радиус, в котором игрок видит интерактивные точки (E по близости, а не по
+## прицелу). 3.5 м, а не 2.5: витрина в лобби стоит в трёх метрах от точки
+## появления игрока, и решение R2 зафиксировало именно это значение.
+const _INTERACT_RANGE := 3.5
+
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _jump_queued: bool = false
 var _spawn_transform: Transform3D = Transform3D.IDENTITY
@@ -99,12 +104,22 @@ func take_damage(amount: float) -> void:
 	health_changed.emit(_health, max_health)
 	if _health > 0.0:
 		return
-	# Смерть. Сигнал уходит раньше респавна, иначе подписчик увидел бы уже
-	# восстановленное здоровье и не смог отличить смерть от лечения. Ровно один
-	# раз: восстановление ниже поднимает здоровье обратно, а is_alive() выше
-	# отсекает повторный вход в эту ветку, пока игрок снова жив.
+	# Смерть. Сигнал уходит раньше перехода, иначе подписчик увидел бы уже
+	# сменённую сцену и не смог бы отличить смерть от чего-либо ещё. Ровно один
+	# раз: is_alive() выше отсекает повторный вход в эту ветку.
+	#
+	# Фаза 3 меняет контракт смерти: смерть больше не «респавн на месте», а
+	# возврат в лобби. Переход идёт через GameState — единственную дверь смены
+	# сцены (спека §6.1), поэтому в тестах её можно подменить записывающей
+	# заглушкой. Без /root/GameState (headless-проверки, сцены без автозагрузки)
+	# остаётся прежний респавн на месте с восстановлением здоровья: это fallback
+	# для тестов, а не второй контракт смерти.
 	died.emit()
-	_respawn(true)
+	var gs := get_node_or_null("/root/GameState") as GameState
+	if gs != null:
+		gs.return_to_lobby("death")
+	else:
+		_respawn(true)  # fallback: headless-проверки и сцены без автозагрузки
 
 
 ## Захват курсора восстанавливается при возврате фокуса окну: Godot отпускает
@@ -164,6 +179,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		# курсоре персонаж не прыгает.
 		if InputGate.is_play_input_allowed(_mouse_mode_for_play_input()):
 			_jump_queued = true
+	elif event.is_action_pressed("interact") and InputGate.is_play_input_allowed(_mouse_mode_for_play_input()):
+		# Взаимодействие — игровой ввод, тот же гейт, что у огня и движения:
+		# со свободным курсором E ничего не делает. Поглощено, чтобы сцена
+		# ниже по стеку не получила ту же клавишу повторно.
+		_try_interact()
+		get_viewport().set_input_as_handled()
 
 
 func _toggle_mouse_capture() -> void:
@@ -171,6 +192,38 @@ func _toggle_mouse_capture() -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	else:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+## Ближайшая интерактивная точка в радиусе _INTERACT_RANGE, иначе null.
+## Публичный: окрестностям лобби (подсветка точки) он понадобится, а тесту —
+## чтобы зафиксировать сам радиус.
+func nearest_interactable() -> Node:
+	var nearest: Node = null
+	var nearest_dist := _INTERACT_RANGE
+	for node in get_tree().get_nodes_in_group("interactable"):
+		# Точка взаимодействия — Area3D, а значит Node3D; узел без мировой
+		# позиции в выборку не попадёт. Проверка на дерево — чтобы узел,
+		# ожидающий удаления, не попал в ответ.
+		if not (node is Node3D):
+			continue
+		if not node.is_inside_tree():
+			continue
+		var dist := global_position.distance_to((node as Node3D).global_position)
+		if dist > _INTERACT_RANGE:
+			continue
+		if nearest == null or dist < nearest_dist:
+			nearest = node
+			nearest_dist = dist
+	return nearest
+
+
+## Выполнить взаимодействие с ближайшей точкой. false, если точки нет, у неё
+## нет протокола interact или сам вызов вернул отказ.
+func _try_interact() -> bool:
+	var target := nearest_interactable()
+	if target == null or not target.has_method("interact"):
+		return false
+	return bool(target.call("interact", self))
 
 
 func _physics_process(delta: float) -> void:
@@ -224,8 +277,9 @@ func _physics_process(delta: float) -> void:
 ## причины требуют одного и того же — сбросить инерцию, прыжковую очередь и
 ## наклон камеры.
 ##
-## restore_health сбрасывает ещё и здоровье, и вызывается из take_damage: после
-## смерти игрок возвращается полным. Падение за карту этим флагом не
+## restore_health сбрасывает ещё и здоровье, и вызывается из take_damage только
+## в fallback-ветке (когда /root/GameState нет): тогда после смерти игрок
+## возвращается полным, а не уходит в лобби. Падение за карту этим флагом не
 ## восстанавливает ничего: сбрасывать по нему здоровье означало бы, что игрок
 ## бесплатно лечится, стоит ему прыгнуть в пропасть. Различать два вызова
 ## флагом дешевле, чем писать второй, почти идентичный метод.

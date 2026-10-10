@@ -8,6 +8,7 @@ extends Resource
 ## знает про узлы сцены, поэтому его можно проверить headless, не строя мир.
 
 @export var display_name: String = "Weapon"
+@export var price: int = 0  # Очки за покупку; 0 = стартовое бесплатное (pistol)
 @export var damage: float = 30.0
 ## Выстрелов в минуту. Интервал между выстрелами = 60 / rounds_per_minute.
 @export var rounds_per_minute: float = 120.0

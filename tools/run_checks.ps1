@@ -46,7 +46,8 @@ $GodotBin = "E:\Godot\Godot_v4.7.2-stable_win64.exe"
 
 # Ordered list of check names, without the .gd extension.
 $Tests = @("smoke", "movement", "input_actions", "input_gate", "weapon_data", "integrity",
-           "weapon", "projectile", "enemies", "waves", "save", "progression")
+           "weapon", "auto_weapon", "projectile", "enemies", "waves", "save", "progression",
+           "interact")
 
 # tests\capture.gd needs a real renderer and tests\diagnose.gd is run by hand,
 # so neither belongs here.

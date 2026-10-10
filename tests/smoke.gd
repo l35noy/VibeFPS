@@ -49,6 +49,7 @@ func _initialize() -> void:
 
 	_test_scene_setup(world, player)
 	_test_sky_background(world)
+	await _test_lobby()
 
 	print("=== RESULT: %d checks, %d failed, %d warnings ===" % [
 		_checks, _failures.size(), _warnings.size()])
@@ -81,3 +82,72 @@ func _test_sky_background(world: Node3D) -> void:
 	_check(env.sky != null, "environment has a Sky resource")
 	if env.sky != null:
 		_check(env.sky.sky_material != null, "sky has a sky_material")
+
+
+## Lobby assembly check: the home scene the player lands in must carry the floor
+## to stand on, the player, the two interaction points and the three test-range
+## targets. Loaded and instantiated exactly as the game loads it -- a harness
+## that rebuilt the nodes would stay green on a lobby.tscn with nothing in it.
+## Run last, and leave main.tscn's section above untouched.
+func _test_lobby() -> void:
+	print("-- lobby: scene assembly")
+	var packed: PackedScene = load("res://lobby.tscn")
+	_check(packed != null, "res://lobby.tscn loads")
+	if packed == null:
+		return
+
+	var lobby: Node3D = packed.instantiate()
+	_check(lobby != null, "lobby.tscn instantiates to a node")
+	if lobby == null:
+		return
+	root.add_child(lobby)
+	# _ready() sets layers, groups and hurtbox zones; they are only readable once
+	# the nodes have gone through a frame in the tree.
+	await physics_frame
+
+	_check(lobby is Node3D, "lobby root is a Node3D")
+	_check(lobby.get_node_or_null("Player") != null, "Player is instantiated in the lobby")
+
+	var floor := lobby.get_node_or_null("Floor") as StaticBody3D
+	_check(floor != null, "Floor StaticBody3D exists")
+	if floor != null:
+		_check(int(floor.collision_layer) == 1,
+			"the lobby floor is on layer 1 (world)",
+			"(got %d)" % int(floor.collision_layer))
+
+	var shop := lobby.get_node_or_null("ShopPoint")
+	_check(shop != null, "ShopPoint exists")
+	if shop != null:
+		_check(shop.is_in_group("interactable"),
+			"ShopPoint is in the interactable group")
+		_check(int(shop.collision_layer) == 1 << 5,
+			"ShopPoint is on layer 6 (interactable)",
+			"(got %d)" % int(shop.collision_layer))
+
+	var door := lobby.get_node_or_null("DoorPoint")
+	_check(door != null, "DoorPoint exists")
+	if door != null:
+		_check(door.is_in_group("interactable"),
+			"DoorPoint is in the interactable group")
+		_check(int(door.collision_layer) == 1 << 5,
+			"DoorPoint is on layer 6 (interactable)",
+			"(got %d)" % int(door.collision_layer))
+
+	var target_names := ["TargetNear", "TargetMid", "TargetFar"]
+	var targets: Array[Node] = []
+	for target_name in target_names:
+		var target := lobby.get_node_or_null(target_name)
+		_check(target != null, "%s exists" % target_name)
+		if target != null:
+			targets.append(target)
+	_check(targets.size() == 3, "three targets stand in the lobby",
+		"(got %d)" % targets.size())
+	for target in targets:
+		var hurtbox := target.get_node_or_null("Hurtbox") as Hurtbox
+		_check(hurtbox != null, "%s carries a Hurtbox" % target.name)
+		if hurtbox != null:
+			_check(hurtbox.zone == 0,
+				"%s hurtbox is zone 0 (enemy_hurtbox)" % target.name,
+				"(got %d)" % hurtbox.zone)
+
+	lobby.queue_free()

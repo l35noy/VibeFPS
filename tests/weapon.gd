@@ -97,14 +97,14 @@ const _TIMER_TOLERANCE := 0.35
 ## never fake a timer that ended early.
 const _TIMER_EPSILON := 0.05
 ## How many physics ticks the flight is watched for after the aim source is
-## turned and moved. At the shipped 120 Hz and 40 m/s that is half a second and
-## 20 m of flight -- long enough for a bend of the parent to be unmistakable,
-## short enough to stay inside the 3 s projectile lifetime.
+## turned and moved. At the shipped 120 Hz and 70 m/s that is half a second and
+## 35 m of flight -- long enough for a bend of the parent to be unmistakable,
+## short enough to stay inside the 4 s projectile lifetime.
 const _TRAJECTORY_TICKS := 60
 ## How far off its own line the projectile may drift, in metres. The bug this
 ## catches moves a shot sideways by METRES (a parent yaw of 45 deg rotates the
-## whole subtree around the pivot), while float32 noise over 20 m is about
-## 2e-6 m. Centimetres separate the two with four orders of magnitude to spare.
+## whole subtree around the pivot), while float32 noise over 35 m is about
+## 3e-6 m. Centimetres separate the two with four orders of magnitude to spare.
 const _TRAJECTORY_DRIFT_TOLERANCE := 0.05
 ## How far along the line the projectile must actually have travelled for the
 ## drift measurement above to mean anything. A projectile that never moved
@@ -112,8 +112,8 @@ const _TRAJECTORY_DRIFT_TOLERANCE := 0.05
 ## having flown at all.
 const _TRAJECTORY_MIN_TRAVEL := 2.0
 ## How many seconds of real frames the startup check watches a weapon that
-## entered the tree with the button held. Twice the 0.5 s rate limit, so a
-## pistol that fires on level alone would have spent four rounds.
+## entered the tree with the button held. Two and a half times the 0.4 s rate
+## limit, so a pistol that fires on level alone would have spent three rounds.
 const _NO_SHOT_WATCH_SECONDS := 1
 
 var _failures: PackedStringArray = []
@@ -624,7 +624,7 @@ func _test_shot_keeps_its_line_when_the_aim_source_moves() -> void:
 	# looks like -- and also what a projectile that never moved looks like: the
 	# loop would sample one position forever and pass the tolerance below for
 	# the wrong reason. So the flight is proved first, along the line the bullet
-	# is supposed to follow. Half a second at 40 m/s is ~20 m; the threshold is
+	# is supposed to follow. Half a second at 70 m/s is ~35 m; the threshold is
 	# 2.0 m, far below that and far above the sub-millimetre distance a frozen
 	# bullet accumulates.
 	_check(travelled > _TRAJECTORY_MIN_TRAVEL,
@@ -745,7 +745,7 @@ func _test_no_shot_while_the_button_is_down_on_entry() -> void:
 	_check(pistol.gate_mouse_mode == Input.MOUSE_MODE_CAPTURED,
 		"precondition: the input gate is open, so only the button can hold the shot back")
 
-	# A full second of real frames with the button down -- longer than the 0.5 s
+	# A full second of real frames with the button down -- longer than the 0.4 s
 	# rate limit, so a pistol that fires on level alone would spend three rounds.
 	for i in _NO_SHOT_WATCH_SECONDS * 60:
 		await process_frame
