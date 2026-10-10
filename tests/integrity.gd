@@ -35,6 +35,23 @@ class _PlayerProbe extends "res://player.gd":
 		return gate_mouse_mode
 
 
+## Записывающий GameState: тот же класс, что у автозагрузки, но с записью
+## причины возврата в лобби и подменённым scene_changer. Падение игрока идёт
+## через него: настоящий change_scene_to_file снёс бы это же дерево.
+## Образец — tests/enemies.gd::_RecordingGameState.
+##
+## `return_to_lobby` переопределён, потому что reason не доходит до
+## `scene_changer` (GameState зовёт его только с путём сцены): «падение просит
+## лобби» и «падение просит лобби ПО ПРИЧИНЕ падения» — разные утверждения, и
+## второе видно только изнутри самого вызова.
+class _RecordingGameState extends GameState:
+	var lobby_reasons: PackedStringArray = []
+
+	func return_to_lobby(reason: String) -> void:
+		lobby_reasons.append(reason)
+		super.return_to_lobby(reason)
+
+
 ## The floor in main.tscn is a 20x20 box spanning y = -1.0 .. 0.0, and the
 ## player's capsule (height 1.8, CollisionShape3D offset y = 0.9) spans
 ## y = 0.0 .. 1.8 relative to its own origin, so a standing player's origin sits
@@ -51,6 +68,10 @@ const _STAND_Y := 1.0
 ## distance. Used as a respawn detector: _respawn() is a teleport, never motion.
 const _TELEPORT_M := 1.0
 
+## Допуск сравнения здоровья: все числа в проверке — целые десятые доли, так что
+## 0.0001 отделяет настоящее расхождение от двоичного представления float.
+const _HEALTH_EPS := 0.0001
+
 ## Битовые маски слоёв из [layer_names] project.godot: слой N = 2^(N-1),
 ## поэтому 1 world = 1, 2 player_body = 2.
 const _LAYER_WORLD := 1
@@ -59,6 +80,19 @@ const _LAYER_PLAYER_BODY := 2
 var _failures: PackedStringArray = []
 var _warnings: PackedStringArray = []
 var _checks := 0
+
+## Пробный GameState, пока он стоит в /root. null означает «в root его нет» —
+## ровно то состояние, которого требует fallback-ветка падения.
+var _probe_game_state: GameState = null
+## Пути, запрошенные у подменённого scene_changer, в порядке вызова.
+var _lobby_changes: PackedStringArray = []
+## Счётчик сигналов смерти игрока. «died ровно один» нельзя проверить по узлу
+## после вызова: при fallback-респавне игрок уже выглядит полностью здоровым.
+## Счётчик внутри обработчика — единственное место, где смерть ещё наблюдаема.
+var _died_count: int = 0
+## Здоровье и живость, увиденные обработчиком died, то есть в момент смерти.
+var _health_at_death: float = -1.0
+var _alive_at_death: bool = true
 
 
 func _check(ok: bool, label: String, detail: String = "") -> void:
@@ -98,8 +132,72 @@ func _xz_distance(player: CharacterBody3D, from: Vector3) -> float:
 		player.global_position.z - from.z).length()
 
 
+## Записывающая заглушка смены сцены: фиксирует запрос и ничего не меняет.
+## Именно поэтому игрок после смерти остаётся ниже kill-plane — это и есть
+## условие, на котором проверяется гейт «ровно один раз».
+func _fake_scene_changer(path: String) -> void:
+	_lobby_changes.append(path)
+
+
+## Живость и здоровье читаются обработчиком в момент сигнала, а не после
+## возврата из вызова: при fallback-респавне к тому моменту всё восстановлено.
+func _on_player_died(player: Node) -> void:
+	_died_count += 1
+	_health_at_death = float(player.call("health"))
+	_alive_at_death = bool(player.call("is_alive"))
+
+
+## Ставит пробный GameState в /root. Имя "GameState" — часть контракта: player.gd
+## находит его по пути /root/GameState, а не по ссылке.
+func _install_probe_game_state() -> GameState:
+	var gs := _RecordingGameState.new()
+	gs.name = "GameState"
+	gs.scene_changer = _fake_scene_changer
+	root.add_child(gs)
+	_probe_game_state = gs
+	return gs
+
+
+## Убирает пробный GameState из /root. Обязательно ДО fallback-части: живой
+## /root/GameState меняет контракт падения.
+func _remove_probe_game_state() -> void:
+	if _probe_game_state != null and is_instance_valid(_probe_game_state):
+		_probe_game_state.queue_free()
+	_probe_game_state = null
+	await physics_frame
+
+
+## PackedStringArray vs Array по содержимому: Godot не считает два разных
+## контейнера равными, поэтому `packed == ["fall"]` было бы false даже при
+## совпадении содержимого.
+func _packed_strings_eq(packed: PackedStringArray, expected: Array) -> bool:
+	if packed.size() != expected.size():
+		return false
+	for i in packed.size():
+		if packed[i] != expected[i]:
+			return false
+	return true
+
+
+## Движок регистрирует GameState/SaveSystem как автозагрузки проекта
+## (project.godot) и ставит одноимённые узлы под /root даже в --script-режиме.
+## Харнесс целиком опирается на то, что /root/GameState ЛИБО отсутствует
+## (fallback-ветка), ЛИБО это поставленная им заглушка: настоящая автозагрузка
+## заслонила бы заглушку (Godot переименовал бы поздний узел при занятом имени)
+## и отдала бы player.gd настоящий change_scene_to_file, который подменил бы
+## сцену на lobby.tscn и завёл бы второго игрока. Освобождение немедленное, а не
+## queue_free: имя должно быть свободно до добавления заглушки.
+func _drop_autoloads() -> void:
+	for autoload_name in ["GameState", "SaveSystem"]:
+		var node := root.get_node_or_null(autoload_name)
+		if node != null:
+			root.remove_child(node)
+			node.free()
+
+
 func _initialize() -> void:
 	print("=== VibeFPS world integrity test ===")
+	_drop_autoloads()
 	var packed: PackedScene = load("res://main.tscn")
 	if packed == null:
 		print("FATAL: cannot load res://main.tscn")
@@ -320,14 +418,93 @@ func _test_kill_plane_quiet_on_edge_fall(player: CharacterBody3D) -> void:
 		"(on_floor=%s, vy=%.3f)" % [player.is_on_floor(), player.velocity.y])
 
 
-## The positive half: a real fall out of the world must bring the player back.
-## Teleported into the void at (0, 5, 40) -- outside the 20x20 floor -- the
-## player crosses the kill plane after ~3.4 s (about 400 of the 600 frames
-## budgeted here) and must be respawned at the spawn transform with a clean
-## state.
+## The positive half: falling past the kill plane is now DEATH (Task 7), not a
+## silent respawn -- the player must return to the lobby with reason "fall".
+##
+## Observed through a recording GameState whose scene_changer is a stub: the
+## scene never actually changes, so the player stays below the kill plane. That
+## is exactly the condition the "exactly once" gate has to survive -- a naive
+## fall branch would call died/return_to_lobby every physics frame.
+##
+## The old world-integrity meaning ("the player is pulled out of the void and
+## never falls forever") is kept as a separate fallback section: with no
+## /root/GameState the fall branch respawns the player at the spawn transform,
+## alive and on the floor.
 func _test_fall_recovery(player: CharacterBody3D) -> void:
-	print("-- fall recovery: falling past the kill plane respawns at spawn")
+	print("-- fall recovery: falling past the kill plane is death -> lobby")
+	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
+
+	_check(root.get_node_or_null("GameState") == null,
+		"precondition: до установки заглушки в /root нет GameState")
+
+	_lobby_changes.clear()
+	var gs := _install_probe_game_state()
+	var spy := gs as _RecordingGameState
+	await physics_frame
+	_check(root.get_node_or_null("GameState") == gs,
+		"precondition: пробный GameState резолвится как /root/GameState")
+
+	_died_count = 0
+	_health_at_death = -1.0
+	_alive_at_death = true
+	player.died.connect(_on_player_died.bind(player))
+
+	var kill_plane := _fall_limit(player)
+	player.global_position = Vector3(0, 5, 40)
+	player.velocity = Vector3.ZERO
+
+	var entered := false
+	for i in 600:
+		await physics_frame
+		if not spy.lobby_reasons.is_empty():
+			entered = true
+			break
+	_check(entered, "падение за kill-plane просит возврат в лобби",
+		"(y=%.2f, kill plane %.1f)" % [player.global_position.y, kill_plane])
+	_check(_packed_strings_eq(spy.lobby_reasons, ["fall"]),
+		"падение возвращает в лобби с причиной \"fall\"",
+		"(получено %s)" % str(spy.lobby_reasons))
+	_check(_packed_strings_eq(_lobby_changes, ["res://lobby.tscn"]),
+		"падение просит у scene_changer ровно res://lobby.tscn",
+		"(получено %s)" % str(_lobby_changes))
+	_check(_died_count == 1, "падение испускает died ровно один раз",
+		"(got %d)" % _died_count)
+	_check(not _alive_at_death, "в момент сигнала died игрок уже мёртв (is_alive() == false)",
+		"(got %s)" % _alive_at_death)
+	_check(absf(_health_at_death) < _HEALTH_EPS, "в момент сигнала died здоровье равно 0.0",
+		"(got %.4f)" % _health_at_death)
+
+	# Stub scene_changer means the scene does NOT change: the player stays below
+	# the kill plane. 60 more frames of falling must add neither a second died
+	# nor a second return_to_lobby -- that is the exactly-once gate under test.
+	var below_after_gate := player.global_position.y < kill_plane
+	await _physics_frames(60)
+	print("    y after gate = %.2f (kill plane %.1f), died=%d, lobby=%d" % [
+		player.global_position.y, kill_plane, _died_count, spy.lobby_reasons.size()])
+	_check(below_after_gate and player.global_position.y < kill_plane,
+		"precondition: заглушка сцену не меняет, игрок остался ниже kill-plane",
+		"(y=%.2f < %.1f)" % [player.global_position.y, kill_plane])
+	_check(_died_count == 1, "падение испускает died ровно один раз, а не каждый кадр",
+		"(got %d)" % _died_count)
+	_check(spy.lobby_reasons.size() == 1 and _lobby_changes.size() == 1,
+		"return_to_lobby(\"fall\") вызван ровно один раз, а не каждый кадр",
+		"(лобби=%s, смен=%s)" % [str(spy.lobby_reasons), str(_lobby_changes)])
+	_check(not bool(player.call("is_alive")),
+		"после смерти от падения игрок остаётся мёртвым, а не воскрешён")
+
+	await _remove_probe_game_state()
+	_check(root.get_node_or_null("GameState") == null,
+		"после секции пробный GameState убран из /root — fallback снова доступен")
+
+	# Fallback without GameState: the fall still pulls the player out of the void
+	# onto the spawn transform and restores health. This is the headless / no-
+	# autoload safety net, not a second death contract.
 	var spawn := _spawn_origin(player)
+	player.call("_respawn", true)
+	await _physics_frames(2)
+	_died_count = 0
+	_health_at_death = -1.0
+	_alive_at_death = true
 	player.global_position = Vector3(0, 5, 40)
 	player.velocity = Vector3.ZERO
 	var respawned := false
@@ -336,11 +513,16 @@ func _test_fall_recovery(player: CharacterBody3D) -> void:
 		if player.global_position.distance_to(spawn) < 2.0:
 			respawned = true
 			break
-	print("    y after fall = %.2f, respawned=%s" % [player.global_position.y, respawned])
-	_check(respawned, "player respawned near the spawn point after falling out of world")
-	await _physics_frames(30)
-	_check(player.is_on_floor(), "respawned player is on the floor again")
-	_check(player.global_position.y > _OFF_PLATFORM_Y, "respawned player is at platform height",
+	print("    fallback y after fall = %.2f, respawned=%s" % [
+		player.global_position.y, respawned])
+	_check(respawned, "fallback без GameState: падение возвращает игрока на точку появления",
 		"(y=%.2f)" % player.global_position.y)
-	_check(player.velocity.length() < 0.01, "velocity zeroed on respawn",
+	_check(_died_count == 1, "fallback: падение испускает died ровно один раз",
+		"(got %d)" % _died_count)
+	await _physics_frames(30)
+	_check(player.is_on_floor(), "fallback: вернувшийся игрок снова на полу",
+		"(y=%.3f)" % player.global_position.y)
+	_check(bool(player.call("is_alive")),
+		"fallback: вернувшийся игрок снова жив (здоровье восстановлено)")
+	_check(player.velocity.length() < 0.01, "fallback: скорость обнулена на точке появления",
 		"(v=%.3f, %.3f, %.3f)" % [player.velocity.x, player.velocity.y, player.velocity.z])

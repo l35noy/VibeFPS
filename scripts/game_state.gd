@@ -18,6 +18,18 @@ extends Node
 ## волна 50, зачистка 500. Волны и зачистка начнут начисляться в Фазе 4;
 ## константы заданы уже здесь, чтобы Фазе 4 не пришлось их изобретать.
 
+## Очки изменились. Сигнал об изменении, а не о существовании: начальное
+## значение читается напрямую из `points`. HUD подписывается на него, а не
+## опрашивает поле каждый кадр.
+signal points_changed(points: int)
+
+## Сменилось экипированное оружие (Task 10). Сигнал об изменении, а не о
+## существовании: начальное значение читается из `equipped_weapon_id`.
+## Игрок подписывается на него, чтобы поменять ствол в руках, а не опрашивать
+## поле каждый кадр. Испускается из `equip_weapon` и из ветки покупки
+## `buy_weapon` — там, где `equipped_weapon_id` реально меняется.
+signal equipped_changed(weapon_id: String)
+
 const POINTS_PER_KILL := 10
 const POINTS_PER_WAVE := 50
 const POINTS_PER_CLEAR := 500
@@ -27,6 +39,14 @@ const POINTS_PER_CLEAR := 500
 ## Фазе 4, и тогда карта вырастет, а вызывающий код не изменится.
 const _LOCATION_SCENES := {
 	"range": "res://range.tscn",
+}
+
+## id оружия -> сцена, которую игрок держит в руках. Единый источник «id → файл»
+## (Task 10): и витрина, и `player.gd` спрашивают сцену здесь, а не собирают путь
+## из id каждый по-своему. Приватный; наружу торчит только weapon_scene_path(id).
+const _WEAPON_SCENES := {
+	"pistol": "res://pistol.tscn",
+	"auto": "res://auto.tscn",
 }
 
 var points: int = 0
@@ -41,6 +61,20 @@ var unlocked_locations: PackedStringArray = ["range"]
 ## заполняет значение только если его никто не задал (см. там же).
 var scene_changer: Callable
 
+## TEMP(dev): разовая выдача стартового капитала, чтобы владелец мог сразу
+## проверить покупку автомата за 300. Убирается отдельной задачей — это НЕ
+## баланс и НЕ часть контракта класса: дефолт `points` остаётся 0, а тесты и
+## headless-прогон ничего не получают (гейт по имени дисплейсера ниже). Заодно
+## защищены две вещи, которые иначе сломались бы: `tests/progression.gd`
+## (`points start at 0`/`STARTING_POINTS`) и проверка автосейва в тест-прогоне
+## (user://save.json в headless не создаётся, потому что выдача не срабатывает).
+const _TEMP_DEV_STARTING_POINTS := 300
+## Выдача ровно один раз за сессию, а не на каждом входе в лобби. Флаг на
+## экземпляре: GameState — автозагрузка, и её `_ready()` выполняется один раз на
+## процесс, но флаг оставляет намерение явным и защищает от ручного повторного
+## входа, если это когда-нибудь понадобится.
+var _temp_dev_grant_done: bool = false
+
 
 func _ready() -> void:
 	# Заполнить движковый переход, только если его никто не подменил. Дефолтный
@@ -53,6 +87,24 @@ func _ready() -> void:
 	var ss := get_node_or_null("/root/SaveSystem")
 	if ss != null:
 		_restore(ss.load_state())
+	_apply_temp_dev_starting_points()
+
+
+## TEMP(dev): выдать 300 один раз за сессию. Только на живом дисплейсере:
+## `--headless` не должен ни менять очки (это сломало бы проверки старта), ни
+## вызывать автосейв (он создал бы user://save.json в тест-прогоне). Проверка
+## через max() означает, что уже большее значение (восстановленный сейв) не
+## понижается. Сигнал испускается, потому что это изменение points.
+func _apply_temp_dev_starting_points() -> void:
+	if _temp_dev_grant_done:
+		return
+	_temp_dev_grant_done = true
+	if DisplayServer.get_name() == "headless":
+		return
+	if points >= _TEMP_DEV_STARTING_POINTS:
+		return
+	points = _TEMP_DEV_STARTING_POINTS
+	points_changed.emit(points)
 
 
 ## Цена оружия из его ресурса. Нет файла или битый ресурс — 0: витрина должна
@@ -63,12 +115,19 @@ func weapon_price(id: String) -> int:
 	return data.price if data != null else 0
 
 
+## Сцена оружия по id или пустая строка, если id неизвестен. Игрок по ней
+## меняет ствол в руках; пустая строка — «менять не на что», а не ошибка.
+func weapon_scene_path(id: String) -> String:
+	return _WEAPON_SCENES.get(id, "")
+
+
 ## Начисление очков. Отрицательные значения игнорируются: это не «штраф», а
 ## защита от опечатки в вызывающем коде, которая тихо уменьшила бы счёт.
 func award_points(amount: int) -> void:
 	if amount < 0:
 		return
 	points += amount
+	points_changed.emit(points)
 	_autosave()
 
 
@@ -91,6 +150,8 @@ func buy_weapon(id: String) -> bool:
 	points -= data.price
 	owned_weapons.append(id)
 	equipped_weapon_id = id
+	points_changed.emit(points)
+	equipped_changed.emit(equipped_weapon_id)
 	_autosave()
 	return true
 
@@ -100,6 +161,7 @@ func equip_weapon(id: String) -> bool:
 	if not (id in owned_weapons):
 		return false
 	equipped_weapon_id = id
+	equipped_changed.emit(equipped_weapon_id)
 	_autosave()
 	return true
 
@@ -140,6 +202,7 @@ func _persist() -> Dictionary:
 func _restore(saved: Dictionary) -> void:
 	if saved.has("points") and (saved["points"] is int or saved["points"] is float):
 		points = int(saved["points"])
+		points_changed.emit(points)
 	if saved.has("owned_weapons") and saved["owned_weapons"] is Array:
 		owned_weapons = _to_string_array(saved["owned_weapons"])
 	if saved.has("equipped_weapon_id") and saved["equipped_weapon_id"] is String:

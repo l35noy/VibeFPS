@@ -7,6 +7,11 @@ signal health_changed(current: float, maximum: float)
 ## Игрок умер. Испускается строго один раз за смерть и до респавна: подписчик
 ## должен успеть увидеть нулевое здоровье, а не уже восстановленное.
 signal died()
+## Сменилось текущее оружие игрока. Испускается при готовности игрока (и, в
+## будущем — Task 10 — при свопе оружия): HUD пере-привязывает счётчик патронов
+## по этому сигналу, а не хватает оружие из сцены сам. `weapon` может быть null,
+## если в сцене оружия нет (лобби, макетка): это «оружия нет», а не ошибка.
+signal weapon_changed(weapon: Node)
 
 @export var speed: float = 5.0
 @export var jump_velocity: float = 5.0
@@ -40,6 +45,10 @@ var _spawn_transform: Transform3D = Transform3D.IDENTITY
 ## «сколько максимум» — потолок, который за бой не меняется, а «сколько
 ## осталось» меняется и после смерти обязана вернуться к этому потолку.
 var _health: float = 0.0
+## GameState, на `equipped_changed` которого подписан игрок (Task 10). Хранится
+## полем, чтобы отписаться в `_exit_tree`, когда узла уже нет в дереве и путь
+## `/root/GameState` не разрешается. Без автозагрузки остаётся null.
+var _game_state: Node = null
 
 @onready var _camera: Camera3D = $Camera3D
 ## Пистолет игрока. Может отсутствовать: лобби Фазы 4 и любые сцены без
@@ -62,11 +71,89 @@ func _ready() -> void:
 	_health = max_health
 	_connect_hurtbox()
 	_connect_focus_recapture()
+	_connect_equipped_changed()
+	# Ствол в руках приводится к купленному ДО эмита стартового состояния:
+	# подписчик weapon_changed должен увидеть уже правильное оружие, а не
+	# пистолет по умолчанию из сцены. Без /root/GameState (тесты, макетки)
+	# остаётся дефолтный Pistol, и ничего не меняется.
+	apply_equipped_weapon()
 	if _pistol != null:
 		# Контракт смены сцены, а не гигиена: полупустой магазин, переживший
 		# поездку в лобби и обратно, стоил бы игроку бесплатных патронов при
 		# каждом входе в бой.
 		_pistol.reset_for_scene_change()
+	# Стартовое состояние HUD идёт сигналами, а не чтением полей: дочерний HUD
+	# входит в дерево раньше игрока (дети — до родителя), поэтому к этому моменту
+	# он уже подписан, и полоса здоровья и счётчик патронов заполняются без
+	# пустого первого кадра и без опроса из HUD. Порядок обязателен: сначала
+	# состояние (здоровье, сброшенный магазин), потом сигнал о нём.
+	health_changed.emit(_health, max_health)
+	weapon_changed.emit(_pistol)
+
+
+## Текущее оружие игрока или null, если оружия в сцене нет. Публичный доступ:
+## HUD привязывается к нему при готовности, а Task 10 будет через него же менять
+## оружие. Возвращает Node, а не Pistol: HUD не должен знать класс оружия.
+func current_weapon() -> Node:
+	return _pistol
+
+
+## Привести ствол в руках к `GameState.equipped_weapon_id`.
+##
+## Слот оружия — узел с именем "Pistol" (см. player.tscn): и пистолет, и
+## автомат занимают одно и то же место в руке, а не стоят рядом. Замена узла, а
+## не подмена оружия внутри: у каждого ствола своя сцена (меши, дуло, ресурс
+## данных), и собирать её полями значило бы держать два описания одного оружия.
+##
+## Трансформ руки сохраняется: позиция и доворот ствола — свойство места в руке
+## игрока, а не конкретной сцены оружия, и потерять их при свопе значило бы
+## смотреть на ствол из другого места.
+##
+## Идемпотентность проверяется по `scene_file_path`: если в руке уже сцена,
+## которую просит GameState, ничего не меняется (иначе стартовый `_ready` и
+## восстановленный сейв пересоздавали бы один и тот же ствол и сбрасывали
+## магазин на каждом входе). Нет слота (`_pistol == null`) — сцене оружие не
+## нужно, и добавлять его сюда нельзя: «нет оружия» — законное состояние лобби
+## и макеток. Без /root/GameState — дефолтный Pistol сцены, как есть.
+func apply_equipped_weapon() -> void:
+	var gs := get_node_or_null("/root/GameState")
+	if gs == null:
+		return
+	var target_path: String = gs.weapon_scene_path(gs.equipped_weapon_id)
+	if target_path.is_empty():
+		return
+	if _pistol == null:
+		return
+	if _pistol.scene_file_path == target_path:
+		return
+	var scene := load(target_path) as PackedScene
+	if scene == null:
+		return
+	var replacement := scene.instantiate() as Pistol
+	if replacement == null:
+		return
+	var slot := _pistol
+	var hand_transform := slot.transform
+	var slot_index := slot.get_index()
+	# Сначала освободить имя у старого слота, потом занять его новым: add_child()
+	# при конфликте имён молча переименовал бы новый узел в "Pistol2", и слот
+	# перестал бы находиться по имени.
+	remove_child(slot)
+	replacement.name = "Pistol"
+	replacement.transform = hand_transform
+	add_child(replacement)
+	move_child(replacement, slot_index)
+	slot.queue_free()
+	_pistol = replacement
+	_pistol.reset_for_scene_change()
+	weapon_changed.emit(_pistol)
+
+
+## Смена экипировки в GameState: поменять ствол в руках. Аргумент-идентификатор
+## не используется: сцена берётся из того же поля GameState, чтобы источник
+## истины был один, а не два, которые могут разойтись.
+func _on_equipped_changed(_weapon_id: String) -> void:
+	apply_equipped_weapon()
 
 
 ## Подписка на сигнал хитбокса, а не чтение его полей: связь «попадание → минус
@@ -79,6 +166,7 @@ func _connect_hurtbox() -> void:
 
 func _exit_tree() -> void:
 	_disconnect_focus_recapture()
+	_disconnect_equipped_changed()
 
 
 ## Сколько здоровья осталось. Публичный доступ, потому что полоса здоровья и
@@ -104,20 +192,32 @@ func take_damage(amount: float) -> void:
 	health_changed.emit(_health, max_health)
 	if _health > 0.0:
 		return
-	# Смерть. Сигнал уходит раньше перехода, иначе подписчик увидел бы уже
-	# сменённую сцену и не смог бы отличить смерть от чего-либо ещё. Ровно один
-	# раз: is_alive() выше отсекает повторный вход в эту ветку.
-	#
-	# Фаза 3 меняет контракт смерти: смерть больше не «респавн на месте», а
-	# возврат в лобби. Переход идёт через GameState — единственную дверь смены
-	# сцены (спека §6.1), поэтому в тестах её можно подменить записывающей
-	# заглушкой. Без /root/GameState (headless-проверки, сцены без автозагрузки)
-	# остаётся прежний респавн на месте с восстановлением здоровья: это fallback
-	# для тестов, а не второй контракт смерти.
+	_die("death")
+
+
+## Единственный переход «смерть»: испустить died ровно один раз и уйти из боя.
+##
+## Порядок обязателен: сигнал уходит раньше перехода, иначе подписчик увидел бы
+## уже сменённую сцену и не смог бы отличить смерть от чего-либо ещё. Здоровье к
+## этому моменту уже 0 — его обнуляет вызывающий (take_damage или ветка падения),
+## а не сам _die, чтобы контракт «в момент died здоровье 0» был виден в одном
+## месте с причиной смерти.
+##
+## Фаза 3 меняет контракт смерти: смерть больше не «респавн на месте», а возврат
+## в лобби. Переход идёт через GameState — единственную дверь смены сцены (спека
+## §6.1), поэтому в тестах её можно подменить записывающей заглушкой. Без
+## /root/GameState (headless-проверки, сцены без автозагрузки) остаётся прежний
+## респавн на месте с восстановлением здоровья: это fallback для тестов, а не
+## второй контракт смерти.
+##
+## reason различает причины («death» — летальный урон, «fall» — падение за
+## kill-plane). На смену сцены он пока не влияет; параметр заведён под будущие
+## экраны смерти.
+func _die(reason: String) -> void:
 	died.emit()
 	var gs := get_node_or_null("/root/GameState") as GameState
 	if gs != null:
-		gs.return_to_lobby("death")
+		gs.return_to_lobby(reason)
 	else:
 		_respawn(true)  # fallback: headless-проверки и сцены без автозагрузки
 
@@ -142,6 +242,32 @@ func _disconnect_focus_recapture() -> void:
 func _on_focus_entered() -> void:
 	if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+## Подписка на смену экипировки в GameState (Task 10). Без автозагрузки
+## (тесты, макетки) подписываться не на что — и это не ошибка.
+##
+## Ссылка на GameState хранится полем, а не переигрывается из пути в
+## `_disconnect_*`: к моменту `_exit_tree` узел может быть уже вне дерева, и
+## `/root/GameState` оттуда не разрешается.
+func _connect_equipped_changed() -> void:
+	var gs := get_node_or_null("/root/GameState")
+	if gs == null or not gs.has_signal("equipped_changed"):
+		return
+	_game_state = gs
+	if not gs.equipped_changed.is_connected(_on_equipped_changed):
+		gs.equipped_changed.connect(_on_equipped_changed)
+
+
+## Отписка с проверкой is_connected: GameState — автозагрузка и переживает
+## игрока, а повторная сцена создаёт игрока заново; без отписки второй вход
+## упал бы на "signal already connected".
+func _disconnect_equipped_changed() -> void:
+	if not is_instance_valid(_game_state):
+		return
+	if _game_state.equipped_changed.is_connected(_on_equipped_changed):
+		_game_state.equipped_changed.disconnect(_on_equipped_changed)
+	_game_state = null
 
 
 func set_spawn_transform() -> void:
@@ -270,19 +396,29 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	if global_position.y < fall_limit:
-		_respawn()
+		# Падение за kill-plane — это смерть, а не тихий респавн: здоровье
+		# обнуляется ДО сигнала, чтобы подписчик died увидел мёртвого игрока
+		# (тот же контракт Task 5, что у летального урона). Гейт is_alive()
+		# гарантирует ровно один вход: без /root/GameState срабатывает
+		# fallback-респавн и игрок вытащен выше kill-plane; с GameState, но
+		# подменённым scene_changer, сцена не меняется и игрок остаётся ниже
+		# kill-plane — однако со нулевым здоровьем, и ветка больше не заходит.
+		if is_alive():
+			_health = 0.0
+			health_changed.emit(_health, max_health)
+			_die("fall")
 
 
-## Возврат на точку появления. Общий для падения за карту и для смерти: обе
-## причины требуют одного и того же — сбросить инерцию, прыжковую очередь и
-## наклон камеры.
+## Возврат на точку появления. Fallback-механика: вызывается из _die() только
+## когда /root/GameState нет (headless-проверки, сцены без автозагрузки), а при
+## restore_health ещё и возвращает полное здоровье. В проде и урон, и падение
+## уходят в лобби через GameState и сюда не попадают.
 ##
-## restore_health сбрасывает ещё и здоровье, и вызывается из take_damage только
-## в fallback-ветке (когда /root/GameState нет): тогда после смерти игрок
-## возвращается полным, а не уходит в лобби. Падение за карту этим флагом не
-## восстанавливает ничего: сбрасывать по нему здоровье означало бы, что игрок
-## бесплатно лечится, стоит ему прыгнуть в пропасть. Различать два вызова
-## флагом дешевле, чем писать второй, почти идентичный метод.
+## Флаг оставлен, чтобы различать два смысла вызова: чистый сброс положения
+## (restore_health = false, здоровье не трогается) и «смерть без GameState»
+## (restore_health = true, игрок возвращается полным). Сегодня _die() зовёт
+## только вторую форму; первая — запас на случай сцены, которой нужно вытащить
+## игрока из пустоты без лечения. Дешевле, чем второй, почти идентичный метод.
 func _respawn(restore_health: bool = false) -> void:
 	global_transform = _spawn_transform
 	velocity = Vector3.ZERO

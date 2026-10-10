@@ -55,6 +55,36 @@ func _initialize() -> void:
 			and (interact[0] as InputEventKey).physical_keycode == 69,
 		"interact is bound to E")
 
+	# 82 is KEY_R in Godot's physical (layout independent) key codes, matching
+	# the encoding the other physical_keycode bindings in project.godot use.
+	# Reload must be physical so it works on any OS keyboard layout.
+	_check(InputMap.has_action("reload"), "action reload exists")
+	var reload := InputMap.action_get_events("reload")
+	_check(reload.size() > 0, "action reload has at least one event")
+	_check(reload.size() > 0
+			and reload[0] is InputEventKey
+			and (reload[0] as InputEventKey).physical_keycode == 82,
+		"reload is bound to physical R (82)")
+	_check(reload.size() > 0
+			and reload[0] is InputEventKey
+			and (reload[0] as InputEventKey).keycode == 0,
+		"reload uses the physical key code only, so it is layout independent")
+
+	# 73 is KEY_I in Godot's physical (layout independent) key codes. The
+	# inventory opens with a captured cursor, so physical is required: on a
+	# non-QWERTY layout the letter's position must still summon the panel.
+	_check(InputMap.has_action("inventory"), "action inventory exists")
+	var inventory := InputMap.action_get_events("inventory")
+	_check(inventory.size() > 0, "action inventory has at least one event")
+	_check(inventory.size() > 0
+			and inventory[0] is InputEventKey
+			and (inventory[0] as InputEventKey).physical_keycode == 73,
+		"inventory is bound to physical I (73)")
+	_check(inventory.size() > 0
+			and inventory[0] is InputEventKey
+			and (inventory[0] as InputEventKey).keycode == 0,
+		"inventory uses the physical key code only, so it is layout independent")
+
 	print("=== RESULT: %d checks, %d failed ===" % [_checks, _failures.size()])
 	for f in _failures:
 		print("  FAILURE: %s" % f)

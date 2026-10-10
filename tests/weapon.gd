@@ -183,6 +183,19 @@ func _settle_fire_released() -> void:
 	await process_frame
 
 
+## A reload key event, delivered through the real input path. Reload is read in
+## the pistol's _unhandled_input, and Input.action_press alone never reaches
+## _unhandled_input (tests/movement.gd and tests/interact.gd pin the same rule),
+## so the press has to be a parsed key event matching the physical R binding
+## declared in project.godot.
+func _reload_key_event(pressed: bool) -> InputEventKey:
+	var ev := InputEventKey.new()
+	ev.physical_keycode = KEY_R
+	ev.keycode = KEY_R
+	ev.pressed = pressed
+	return ev
+
+
 ## The aim source of the trajectory scenario hangs under a parent that the
 ## scenario moves afterwards. Every other scenario's aim source hangs straight
 ## off the world and nothing ever touches its ancestors -- which is precisely
@@ -375,7 +388,7 @@ func _initialize() -> void:
 	await _test_shot_keeps_its_line_when_the_aim_source_moves()
 	await _test_shot_starts_at_the_barrel()
 	await _test_no_shot_while_the_button_is_down_on_entry()
-	await _test_empty_magazine_and_automatic_reload()
+	await _test_empty_magazine_and_manual_reload()
 	await _test_reload_blocks_firing_and_cannot_be_restarted()
 	await _test_fire_rate()
 	await _test_input_gate()
@@ -773,13 +786,14 @@ func _test_no_shot_while_the_button_is_down_on_entry() -> void:
 
 
 ## A full magazine's worth of rounds at the design's rate, then the attempt past
-## the last one: refused, with the magazine untouched. The pistol then reloads
-## itself -- the player does not have to ask -- and the held fire button
-## produces nothing for the whole reload, which is the case the plan's review
-## section calls out: an empty magazine and a fire press in the same frame must
-## neither shoot nor restart the reload.
-func _test_empty_magazine_and_automatic_reload() -> void:
-	print("-- full magazine, the empty magazine, and the reload the pistol starts itself")
+## the last one: refused, with the magazine untouched. The pistol does NOT reload
+## itself: an empty magazine stays empty and quiet, and only the reload action
+## (physical R) starts the reload -- through the same input gate as fire. The
+## held fire button produces nothing for the whole reload, which is the case the
+## plan's review section calls out: an empty magazine and a fire press in the
+## same frame must neither shoot nor restart the reload.
+func _test_empty_magazine_and_manual_reload() -> void:
+	print("-- full magazine, the empty magazine, and the reload the player asks for with R")
 	var world := _new_world()
 	var aim := _new_aim_source(world)
 	var pistol := await _new_pistol(world, _data, aim)
@@ -808,14 +822,49 @@ func _test_empty_magazine_and_automatic_reload() -> void:
 	_check(log.fired == _EXPECTED_MAGAZINE,
 		"no round past the last one left the magazine", "(got %d signals)" % log.fired)
 
+	# The new contract: no automatic reload. The magazine is empty and the fire
+	# button is still held; the pistol is watched for longer than a full reload
+	# would have taken, and it has to stay empty and silent.
+	Input.action_release("fire")
+	var quiet_until := _now_ms() + int(_EXPECTED_RELOAD_TIME * 1.5 * 1000.0)
+	while _now_ms() < quiet_until:
+		await process_frame
+	_check(log.reload_started == 0,
+		"an empty magazine does NOT start a reload on its own",
+		"(got %d reloads)" % log.reload_started)
+	_check(pistol.is_reloading() == false, "and the pistol is not reloading by itself")
+	_check(pistol.current_mag() == 0, "the magazine is still empty",
+		"(got %d)" % pistol.current_mag())
+
+	# The gate: with the cursor free R is not play input and must not reload.
+	pistol.gate_mouse_mode = Input.MOUSE_MODE_VISIBLE
+	Input.parse_input_event(_reload_key_event(true))
+	Input.flush_buffered_events()
+	await physics_frame
+	Input.parse_input_event(_reload_key_event(false))
+	Input.flush_buffered_events()
+	await physics_frame
+	_check(log.reload_started == 0,
+		"R with a free cursor does not start a reload",
+		"(got %d reloads)" % log.reload_started)
+	_check(not pistol.is_reloading(), "and leaves the pistol idle, not reloading")
+
+	# Capturing the cursor is the only thing that has to change.
+	pistol.gate_mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Input.parse_input_event(_reload_key_event(true))
+	Input.flush_buffered_events()
 	var started := await _await_until(func() -> bool: return log.reload_started > 0, 5.0)
-	_check(started, "the empty magazine starts a reload without being asked")
+	Input.parse_input_event(_reload_key_event(false))
+	Input.flush_buffered_events()
+	_check(started, "pressing reload starts the reload")
 	_check(pistol.is_reloading(), "the pistol reports itself reloading")
 	_check(log.reload_started == 1, "exactly one reload was started",
 		"(got %d)" % log.reload_started)
 
-	# The fire button is still held. Nothing may come out until the magazine is
-	# full again.
+	# The fire button is held again through the reload. Nothing may come out
+	# until the magazine is full again.
+	await _settle_fire_released()
+	Input.action_press("fire")
 	var leaked := await _await_until(func() -> bool: return log.fired > _EXPECTED_MAGAZINE, 0.4)
 	_check(not leaked, "a held fire button spends no rounds while the magazine is empty",
 		"(got %d)" % log.fired)
@@ -826,7 +875,7 @@ func _test_empty_magazine_and_automatic_reload() -> void:
 	# held here would measure the refill and the next shot in one observation.
 	Input.action_release("fire")
 	var finished := await _await_until(func() -> bool: return log.reload_finished > 0)
-	_check(finished, "the reload finished on its own")
+	_check(finished, "the reload finished")
 	if finished:
 		var elapsed := log.reload_duration()
 		print("    reload took %.3f s" % elapsed)

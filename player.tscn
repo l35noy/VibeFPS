@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://player.gd" id="1_script"]
 [ext_resource type="Material" path="res://scripts/player_body_material.tres" id="2_body_material"]
 [ext_resource type="PackedScene" path="res://pistol.tscn" id="3_pistol"]
 [ext_resource type="Script" path="res://scripts/hurtbox.gd" id="4_hurtbox"]
+[ext_resource type="PackedScene" path="res://ui.tscn" id="5_ui"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 height = 1.8
@@ -46,3 +47,5 @@ zone = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Hurtbox"]
 shape = SubResource("CapsuleShape3D_hurtbox")
+
+[node name="UI" parent="." instance=ExtResource("5_ui")]
