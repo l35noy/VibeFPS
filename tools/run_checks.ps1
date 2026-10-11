@@ -1,132 +1,141 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Single entry point for every headless check in VibeFPS.
+    Единая точка входа для каждой headless-проверки в VibeFPS.
 
 .DESCRIPTION
-    Runs each check in tests\ as its own Godot process:
+    Запускает каждую проверку из tests\ в отдельном процессе Godot:
 
         godot --headless --path . --script res://tests/<name>.gd
 
-    A check is a standalone SceneTree script that ends in quit(0) on success
-    and quit(1) on failure. The order of $Tests is meaningful: "smoke" guards
-    scene integrity and therefore runs before every other check.
+    Проверка — это автономный скрипт SceneTree, который завершается quit(0) при
+    успехе и quit(1) при неудаче. Порядок $Tests имеет значение: "smoke" защищает
+    целостность сцен и поэтому запускается перед каждой другой проверкой.
 
-    A name listed in $Tests whose file does not exist yet is reported as
-    [SKIP], never as a pass and never as a failure. That is what lets the list
-    be declared up front and grown phase by phase.
+    Имя из $Tests, файл которого ещё не существует, сообщается как
+    [SKIP], никогда как успех и никогда как ошибка. Именно это позволяет списку
+    быть объявленным заранее и расширяться этап за этапом.
 
-    Each check runs under a wall-clock timeout ($CheckTimeoutMs, 120 s by
-    default). A check that exceeds it is killed and reported as FAIL so that a
-    hung check cannot block the run forever.
+    Каждая проверка запускается с таймаутом wall-clock ($CheckTimeoutMs, 120 секунд
+    по умолчанию). Проверка, превышающая его, убивается и сообщается как FAIL, чтобы
+    зависшая проверка не блокировала запуск навсегда.
 
 .PARAMETER Filter
-    Optional substring of the test name, matched case-insensitively. Omit it
-    (or pass an empty string) to run every listed check.
+    Необязательная подстрока имени теста, сопоставляемая без учёта регистра.
+    Опустите её (или передайте пустую строку), чтобы запустить все перечисленные
+    проверки.
 
 .EXAMPLE
     .\tools\run_checks.ps1
-    Runs every check and prints a RESULT summary line.
+    Запускает все проверки и выводит итоговую сводную строку.
 
 .EXAMPLE
     .\tools\run_checks.ps1 smok
-    Runs only the checks whose name contains "smok".
+    Запускает только те проверки, имя которых содержит "smok".
 
 .NOTES
-    Exit code 0 = every executed check passed. Exit code 1 = at least one check
-    failed, timed out, or Godot itself could not be found.
+    Код выхода 0 = все выполненные проверки пройдены. Код выхода 1 = хотя бы одна
+    проверка провалена, превысила таймаут, или движок Godot не найден.
 #>
 
 $ErrorActionPreference = 'Stop'
 
-# Godot 4.7.2 stable. This is the single supported engine for the project; do
-# not add a second path here, the test contract (exit codes, [FAIL] markers on
-# stdout, --headless flag) is tied to this build.
+# Godot 4.7.2 stable. Это единственный поддерживаемый движок для проекта; не
+# добавляйте сюда второй путь, контракт тестов (коды выхода, маркеры [FAIL] на
+# stdout, флаг --headless) привязан к этой сборке.
 $GodotBin = "E:\Godot\Godot_v4.7.2-stable_win64.exe"
 
-# Ordered list of check names, without the .gd extension.
+# Упорядоченный список имён проверок без расширения .gd.
 $Tests = @("smoke", "movement", "input_actions", "input_gate", "weapon_data", "integrity",
            "weapon", "auto_weapon", "projectile", "enemies", "waves", "save", "progression",
            "interact", "ui", "inventory")
 
-# tests\capture.gd needs a real renderer and tests\diagnose.gd is run by hand,
-# so neither belongs here.
+# tests\capture.gd требует реального рендерера, а tests\diagnose.gd запускается
+# вручную, поэтому ни один из них не принадлежит сюда.
 
 $Filter = ''
 if ($args.Count -gt 0 -and $null -ne $args[0]) {
     $Filter = [string]$args[0]
 }
 
-# Godot's --path . is resolved against the process working directory, and the
-# test existence check is resolved against the repo, so pin both to the repo
-# root no matter where the script was invoked from.
+# --path . Godot разрешается относительно рабочего каталога процесса, а
+# проверка существования теста разрешается относительно репозитория, поэтому
+# закрепляем оба каталога за корнем репозитория, независимо от того, откуда
+# был запущен скрипт.
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 
-# Per-check wall-clock budget. The real 31-check smoke test measures ~17s on
-# this hardware, so 120s leaves ~7x headroom for heavier checks added in later
-# phases (a hang must not be reported as a slow pass). A check that exceeds this
-# is killed and reported as FAIL rather than blocking the run forever.
+# Бюджет времени (wall-clock) на каждую проверку. Реальный дымовой тест «smoke»
+# из 31 проверки занимает ~17 секунд на этом оборудовании, поэтому 120 секунд
+# оставляют ~7× запас для более тяжёлых проверок, добавляемых в последующих
+# фазах (зависание не должно сообщаться как медленный успех). Проверка,
+# превышающая этот срок, убивается и сообщается как FAIL, а не блокирует
+# запуск навсегда.
 $CheckTimeoutMs = 120000
 
-# Unique per run AND per process. $PID alone would still collide if two runners
-# were launched from the same parent process, and a collision would let one run
-# read the other's output and report PASS for someone else's check.
+# Уникален для каждого запуска И каждого процесса. $PID сам по себе всё равно
+# столкнулся бы с коллизией, если два запуска были запущены из одного и того же
+# родительского процесса, и коллизия позволила бы одному запуску прочитать
+# вывод другого и сообщить PASS чужой проверке.
 $runTag = '{0}-{1}' -f $PID, ([guid]::NewGuid().ToString('N').Substring(0, 8))
 $stdoutPath = Join-Path ([System.IO.Path]::GetTempPath()) "vibefps_check_out_$runTag.txt"
 $stderrPath = Join-Path ([System.IO.Path]::GetTempPath()) "vibefps_check_err_$runTag.txt"
 
 Push-Location -LiteralPath $RepoRoot
 try {
-    # Fail loudly and run nothing if the engine is missing, rather than
-    # reporting every check as failed for a reason that has nothing to do with
-    # the code under test.
+    # Явно завершиться с ошибкой и ничего не запускать, если движок отсутствует,
+    # а не сообщать о провале каждой проверки по причине, не имеющей отношения к
+    # тестируемому коду.
     if (-not (Test-Path -LiteralPath $GodotBin -PathType Leaf)) {
-        Write-Output "Godot binary not found: $GodotBin"
-        Write-Output "RESULT: 0 passed, 0 failed, 0 skipped"
+        Write-Output "Движок Godot не найден: $GodotBin"
+        Write-Output "РЕЗУЛЬТАТ: 0 пройдено, 0 провалено, 0 пропущено"
         exit 1
     }
 
-    # Global class_name declarations (scripts\input_gate.gd declares InputGate)
-    # are visible to the parser only through .godot\global_script_class_cache.cfg,
-    # and that file is git-ignored. On a clean clone it does not exist, so every
-    # script referring to a class_name fails to parse with "Identifier ... not
-    # declared in the current scope".
+    # Глобальные объявления class_name (scripts\input_gate.gd объявляет InputGate)
+    # видны парсеру только через .godot\global_script_class_cache.cfg,
+    # и этот файл игнорируется Git. В чистом клоне он не существует, поэтому каждый
+    # скрипт, ссылающийся на class_name, не может быть разобран с ошибкой
+    # "Identifier ... not declared in the current scope".
     #
-    # The cache also goes stale without disappearing, which is the case that
-    # matters most: adding a class_name leaves an existing cache that simply does
-    # not list it, and the script referring to it then dies at parse time with
-    # "Could not find type ... in the current scope". That reads as that script's
-    # own failure and the script cannot say why -- a check that dies before its
-    # first assertion cannot report its own failure. So the cache counts as stale
-    # when it is missing OR when any source is newer than it.
+    # Кеш также устаревает без исчезновения — именно это случается чаще
+    # всего: добавление class_name оставляет существующий кеш, который просто не
+    # содержит его, и скрипт, ссылающийся на него, погибает при разборе с ошибкой
+    # "Could not find type ... in the current scope". Это читается как
+    # собственный сбой этого скрипта, и скрипт не может объяснить причину — проверка,
+    # погибшая до первого утверждения, не может сообщить о своей неудаче. Поэтому
+    # кеш считается устаревшим, когда он отсутствует ИЛИ когда любой источник
+    # новее его.
     #
-    # One import pass rebuilds the cache and costs about two seconds, so it runs
-    # only when one of those two holds, not on every invocation. Placed after the
-    # engine pre-check above so a missing Godot still fails fast with its own
-    # message instead of being invoked here.
+    # Один проход импорта перестраивает кеш и стоит около двух секунд, поэтому он
+    # запускается только тогда, когда выполнено одно из двух условий выше, а не при
+    # каждом вызове. Расположен после проверки наличия движка выше, чтобы отсутствие
+    # Godot всё равно завершалось быстрой ошибкой со своим собственным сообщением, а
+    # не вызывалось здесь.
     $classCache = Join-Path $RepoRoot '.godot\global_script_class_cache.cfg'
     $cacheFile = Get-Item -LiteralPath $classCache -ErrorAction SilentlyContinue
 
-    # The scan is the only cost of this check, so it is one pass, and .godot is
-    # pruned rather than descended into and filtered out afterwards: it holds the
-    # engine's imported binaries, is most of the tree by file count, and can never
-    # contain a class_name. -Include cannot express that -- with -LiteralPath it
-    # does not filter at all (it returned every file in the repo, project.godot
-    # among them), which would both build FileInfo for the whole tree and treat an
-    # edit to any file as a reason to re-import. The extension test is explicit
-    # instead.
+    # Сканирование — единственные затраты этой проверки, поэтому оно состоит из
+    # одного прохода, и .godot исключается из списка, а не спускается в него и
+    # затем фильтруется: в нём хранятся импортированные движком бинарники, он
+    # является большинством дерева по количеству файлов и никогда не может
+    # содержать class_name. -Include не может выразить это — с -LiteralPath он
+    # вообще не фильтрует (возвращает каждый файл в репозитории, включая
+    # project.godot), что с одной стороны построило бы FileInfo для всего дерева, с
+    # другой — посчитало бы правку любого файла основанием для повторного импорта.
+    # Поэтому проверка расширения явна.
     $sourceRoots = @(Get-ChildItem -LiteralPath $RepoRoot -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -ne '.godot' } |
         Select-Object -ExpandProperty FullName)
     $newestSource = $null
-    # An empty -LiteralPath array is a terminating parameter binding error, and
-    # $ErrorActionPreference is Stop: it would abort the whole run with a
-    # PowerShell stack trace and no RESULT line. Unreachable while project.godot
-    # exists, but this is the single entry point to every check.
+    # Пустой массив -LiteralPath — это критическая ошибка привязки параметров, и
+    # $ErrorActionPreference равен Stop: это привело бы к аварийному завершению
+    # всего запуска со стековой трассой PowerShell и без итоговой строки. Недостижимо,
+    # пока существует project.godot, но этот скрипт — единая точка входа для всех
+    # проверок.
     if ($sourceRoots.Count -gt 0) {
-        # LastWriteTimeUtc, not LastWriteTime: the cache is written by the engine
-        # and both sides of the comparison are compared across a DST boundary,
-        # which local wall-clock timestamps do not survive.
+        # LastWriteTimeUtc, а не LastWriteTime: кеш пишется движком, и обе
+        # стороны сравнения пересекаются через границу перехода на летнее время, на
+        # локальных временных метках стеновых часов это не выдерживается.
         $newestSource = Get-ChildItem -LiteralPath $sourceRoots -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Extension -in '.gd', '.tscn', '.tres' } |
             Sort-Object LastWriteTimeUtc -Descending |
@@ -135,7 +144,7 @@ try {
     $needsImport = $null -eq $cacheFile -or
         ($null -ne $newestSource -and $newestSource.LastWriteTimeUtc -gt $cacheFile.LastWriteTimeUtc)
     if ($needsImport) {
-        Write-Output "importing project (class cache missing or stale) ..."
+        Write-Output "импорт проекта (кеш классов отсутствует или устарел) ..."
         & $GodotBin --headless --path . --import | Out-Null
     }
 
@@ -150,7 +159,7 @@ try {
 
         $scriptPath = Join-Path $RepoRoot ("tests\{0}.gd" -f $name)
         if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
-            Write-Output ("{0,-14} [SKIP]  (tests\{1}.gd not present)" -f $name, $name)
+            Write-Output ("{0,-14} [SKIP]  (tests\{1}.gd отсутствует)" -f $name, $name)
             $skip++
             continue
         }
@@ -159,17 +168,16 @@ try {
             Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
         }
 
-        # --headless reports engine diagnostics on stderr while the check's own
-        # print() output, including the [FAIL] lines, goes to stdout. Both
-        # streams are captured to files and re-read afterwards: PowerShell 5.1's
-        # 2>&1 is not dependable for native processes here, and a test that
-        # fails without its [FAIL] lines reaching the console is a runner that
-        # cannot be debugged.
+        # Флаг --headless выводит диагностику движка на stderr, тогда как вывод
+        # самой проверки (print()), включая строки [FAIL], идёт на stdout. Оба
+        # потока перехватываются в файлы и затем перечитываются: реализация 2>&1 в
+        # PowerShell 5.1 ненадёжна для родных процессов, и проверка, чей вывод [FAIL]
+        # не достиг консоли, не может быть отлажена.
         #
-        # Started without -Wait and bounded with WaitForExit instead: -Wait
-        # blocks forever, and a check that throws before reaching quit() leaves
-        # Godot running indefinitely. That would mean no RESULT line, no exit
-        # code, and a stuck session for whoever is driving this script.
+        # Запуск без -Wait и ограничение через WaitForExit вместо него: -Wait
+        # бесконечно блокирует, а проверка, бросившая исключение до quit(), оставит
+        # Godot работающим бесконечно. Это означало бы отсутствие итоговой строки,
+        # кода выхода и зависшую сессию того, кто управляет этим скриптом.
         $proc = Start-Process -FilePath $GodotBin `
             -ArgumentList '--headless', '--path', '.', '--script', "res://tests/$name.gd" `
             -WorkingDirectory $RepoRoot `
@@ -177,38 +185,38 @@ try {
             -RedirectStandardOutput $stdoutPath `
             -RedirectStandardError $stderrPath
 
-        # Cache the process handle BEFORE the process exits. Start-Process -PassThru
-        # without -Wait hands back a Process whose ExitCode reads back as $null once
-        # the process is gone, because the handle was never retained; touching .Handle
-        # here pins it. Without this, `$code -eq 0` is false for every check and the
-        # PASS branch is unreachable -- the runner reports a green check as FAIL.
-        # The $null = is required: .Handle returns an IntPtr that would otherwise
-        # print into the runner's output.
+        # Кэшировать дескриптор процесса ДО его завершения. Start-Process -PassThru
+        # без -Wait возвращает объект Process, чей ExitCode читается как $null после
+        # завершения процесса, потому что дескриптор не удерживался; обращение к .Handle
+        # здесь закрепляет его. Без этого `$code -eq 0` оказывается $false для каждой
+        # проверки, и ветка PASS недостижима — запуск сообщает о зелёной проверке как
+        # FAIL. Присваивание $null = обязательно: .Handle возвращает IntPtr, который
+        # иначе попал бы в вывод запуска.
         $null = $proc.Handle
 
         $timedOut = -not $proc.WaitForExit($CheckTimeoutMs)
         if ($timedOut) {
-            # Kill only this check so the remaining ones still run; a single
-            # hung check must not abort the whole suite.
+            # Убить только эту проверку, чтобы остальные всё равно запустились;
+            # одна зависшая проверка не должна прерывать всю suite.
             try {
                 $proc.Kill()
-                # Let the OS reap it and flush the redirected handles before
-                # the files are read below. Bounded on purpose: Kill() returns
-                # void under .NET Framework, so a kill that failed to terminate
-                # the process would make an unbounded wait hang forever, which is
-                # exactly what $CheckTimeoutMs exists to prevent. The result is
-                # discarded because the bounded overload returns a bool that
-                # would otherwise leak onto the runner's stdout.
+                # Дать ОС завершить процесс и сбросить перехваченные дескрипторы перед
+                # чтением файлов ниже. Намеренно ограничено: Kill() возвращает void
+                # под .NET Framework, поэтому kill, который не смог бы завершить
+                # процесс, привёл бы к долгому бесконечному ожиданию — именно это
+                # $CheckTimeoutMs существует для предотвращения. Результат
+                # отбрасывается, потому что ограниченная перегрузка возвращает bool,
+                # который иначе попал бы на stdout запуска.
                 $null = $proc.WaitForExit(5000)
             } catch {
-                # Already gone between the timeout and the kill; nothing to do.
+                # Уже завершился между таймаутом и убийством; нечего делать.
             }
         } else {
-            # The bounded WaitForExit(ms) above returns as soon as the process is
-            # gone and does not wait for the redirected streams to reach EOF, so
-            # the files read below would depend on Start-Process having flushed
-            # them already. This parameterless overload does wait for EOF, making
-            # the captured output deterministic instead of incidentally complete.
+            # Ограниченный WaitForExit(ms) выше возвращается, как только процесс
+            # завершается, но не дожидается EOF перехваченных потоков, поэтому файлы
+            # ниже могли бы зависеть от того, что Start-Process уже сбросил их.
+            # Эта перегрузка без параметров ждёт EOF, делая захваченный вывод
+            # детерминированным, а не случайно завершённым.
             $proc.WaitForExit()
         }
 
@@ -220,27 +228,27 @@ try {
             $output += [System.IO.File]::ReadAllText($stderrPath)
         }
 
-        # The exit code is the primary contract, but a check that reports a
-        # failed assertion and then forgets quit(1) must not read as a pass.
-        # This can only turn PASS into FAIL, never the reverse. The (?m) flag
-        # matters: without it ^ anchors to the start of the whole captured
-        # output rather than the start of each line, and the check would
-        # silently false-pass whenever the engine banner precedes the failure.
+        # Код выхода — первичный контракт, но проверка, сообщившая о провале
+        # утверждения и забывшая quit(1), не должна читаться как успех. Это может
+        # только перевести PASS в FAIL, никогда — обратное. Флаг (?m) важен: без него
+        # ^ привязывается к началу всего захваченного вывода, а не к началу каждой
+        # строки, и проверка тихо проходила бы как успех, если бы баннер движка
+        # предшествовал ошибке.
         $reportedFailure = $output -match '(?m)^\s*\[FAIL\]'
         $code = $proc.ExitCode
 
-        # A timed-out check is always a FAIL, whatever its exit code or output
-        # happen to say: it never reached a verdict, so there is nothing to pass.
+        # Проверка, превысившая таймаут, всегда FAIL, независимо от того, что говорят
+        # её код выхода или вывод: она не достигла вердикта, поэтому нечего и проходить.
         if ($code -eq 0 -and -not $reportedFailure -and -not $timedOut) {
             Write-Output ("{0,-14} PASS" -f $name)
             $pass++
         } else {
             if ($timedOut) {
-                $reason = "timed out after $($CheckTimeoutMs / 1000) s"
+                $reason = "превышен таймаут ($($CheckTimeoutMs / 1000) с)"
             } elseif ($code -ne 0) {
-                $reason = "exit code $code"
+                $reason = "код выхода $code"
             } else {
-                $reason = '[FAIL] marker in output but exit code 0'
+                $reason = '[FAIL] маркер в выводе, но код выхода 0'
             }
             Write-Output ("{0,-14} FAIL  ({1})" -f $name, $reason)
             foreach ($line in ($output -split "`r?`n")) {
@@ -251,7 +259,7 @@ try {
     }
 
     Write-Output ''
-    Write-Output ("RESULT: {0} passed, {1} failed, {2} skipped" -f $pass, $fail, $skip)
+    Write-Output ("РЕЗУЛЬТАТ: {0} пройдено, {1} провалено, {2} пропущено" -f $pass, $fail, $skip)
 
     if ($fail -gt 0) { exit 1 } else { exit 0 }
 }
