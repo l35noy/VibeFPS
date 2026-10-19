@@ -1,62 +1,37 @@
-﻿extends SceneTree
+extends SceneTree
 
-## Enemy data harness for VibeFPS -- the first check of Phase 2.
+## Тестовый сценарий данных и поведения врагов для VibeFPS.
 ##
-## Structured and worded after tests/weapon_data.gd: sections, [PASS]/[FAIL]
-## per assertion, a counter, quit(1) on any failure. It reads
-## res://data/enemies/contact.tres through load() and asks it the questions the
-## enemy script will ask in Phase 2: what are the numbers, what kind is it, and
-## does the resource consider itself usable. Nothing is instantiated as a scene
-## node -- this is data, and a data check that had to build a world in order to
-## read a number would be testing the world instead.
+## Построен по структуре tests/weapon_data.gd: разделы, [PASS]/[FAIL]
+## на каждое утверждение, счётчик проверок, завершение с кодом quit(1) при сбое.
+## Загружает res://data/enemies/contact.tres через load() и проверяет параметры,
+## которые скрипт врага использует в Фазе 2: числовые значения, тип врага и
+## корректность ресурса (is_valid). Узлы сцены в первом разделе не инстанцируются —
+## это проверка данных, а проверка данных, собирающая мир для чтения одного числа,
+## тестировала бы мир, а не ресурс.
 ##
-## Every assertion below names the edit that turns it red. The negative halves
-## are asserted too, not only the green ones: is_valid() is asked to reject each
-## degenerate value in turn. Without those, a method hardcoded to return true
-## would sail through a check that only ever saw the good resource.
+## Каждое утверждение проверяет как корректные значения, так и отсечение
+## некорректных данных через is_valid(). Без негативных тестов метод с захардкоженным
+## возвратом true прошёл бы проверку, видя только эталонный ресурс.
 ##
-## Task 2 adds the second section, "Здоровье игрока". It loads the real
-## res://entities/player/player.tscn and waits for is_node_ready() instead of assembling a player
-## out of nodes: what is under test is the wiring stored in the scene file, and a
-## harness that built the player itself would stay green with player.tscn
-## carrying no Hurtbox at all. The damage is dealt through that scene's own
-## Hurtbox node, so "damage_taken -> take_damage" is exercised as a connection
-## rather than as two methods that happen to exist.
+## Раздел 2: «Здоровье игрока». Загружает реальную сцену
+## res://entities/player/player.tscn, ожидает is_node_ready() и проверяет получение
+## урона через собственный узел Hurtbox и реакцию сигналов damage_taken -> take_damage.
 ##
-## Task 3 adds the third section, "Контактный враг". Same rule, one level deeper:
-## the enemy comes from res://entities/enemies/contact/enemy_contact.tscn and is hurt by the real
-## res://weapons/projectile/projectile.tscn, while only the world around it (floor, wall) is built
-## in code. tests/projectile.gd cannot cover this: its world is made of nodes, so
-## it proves nothing about the wiring stored in the enemy's scene file -- layers,
-## hurtbox zone, data reference. Everything the enemy needs is read with call()/
-## get()/has_method() rather than through the ContactEnemy class, exactly like
-## the player helpers above: a static reference to a class_name that does not
-## exist yet kills the whole harness at parse time and reports nothing about what
-## is missing.
+## Раздел 3: «Контактный враг». Проверяет получение урона врагом из
+## res://entities/enemies/contact/enemy_contact.tscn снарядом из
+## res://weapons/projectile/projectile.tscn в тестовом мире.
 ##
-## Task 4 appends the fourth section, "Навигация". The enemy still comes from
-## res://entities/enemies/contact/enemy_contact.tscn -- the NavigationAgent3D is read out of that scene
-## instance, never built here -- while the world it walks through (floor, wall,
-## NavigationRegion3D, target) is programmatic and baked at runtime with a
-## synchronous bake_navigation_mesh(false). "Walked" is asserted the only honest
-## way: the polygon count of the baked mesh, the distance to the target on every
-## physics frame, and the horizontal velocity on every frame where the enemy was
-## moving. An empty navmesh makes all of it fall, which is the point -- a world
-## without polygons is a world where the enemy stands still and still looks like
-## it "walked" in a test that only watched a final position.
+## Раздел 4: «Навигация». Проверяет перемещение врага по NavigationRegion3D к цели,
+## скорость движения и остановку на заданной дистанции.
 ##
-## Task 5 appends the fifth section, "Проводка сцены". Here the whole subject is
-## res://levels/range/range.tscn, loaded and instantiated as the game loads it: the three
-## targets, the enemy, the player, the NavigationRegion3D and the script that
-## bakes it. Nothing is rebuilt from nodes in code — that is the entire point.
-## Phase 1 shipped the shooting range with no check at all (HANDOFF §8), so a
-## range with no navmesh, no enemy, or targets on the wrong layer read as
-## "working" until a human launched the game. The section also observes the
-## enemy walking in the LOADED range, because a baked mesh with zero polygons
-## is exactly the failure a static assertion list cannot see.
+## Раздел 5: «Проводка сцены». Проверяет тир res://levels/range/range.tscn,
+## инициализацию навигационной сетки, наличие целей, врага и игрока.
 ##
-## Run: godot --headless --path . --script res://tests/enemies.gd
-##      .\tools\run_checks.ps1 enemies
+## Запуск:
+##   godot --headless --path . --script res://tests/enemies.gd
+##   powershell -File .\tools\run_checks.ps1 enemies
+
 
 const _CONTACT_PATH := "res://data/enemies/contact.tres"
 const _PLAYER_PATH := "res://entities/player/player.tscn"
@@ -293,8 +268,8 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 		print("  [FAIL] %s %s" % [label, detail])
 
 
-## Builds a throwaway EnemyData with one field overwritten, so is_valid() can be
-## asked about a value no shipped resource ever carries.
+## Создаёт временный экземпляр EnemyData с одним переопределённым полем для
+## проверки отсечения недопустимых значений методом is_valid().
 func _probe(overrides: Dictionary) -> EnemyData:
 	var probe := EnemyData.new()
 	for key in overrides:
@@ -302,8 +277,8 @@ func _probe(overrides: Dictionary) -> EnemyData:
 	return probe
 
 
-## Must come back true only when is_valid() really rejects the degenerate
-## value, which is what makes "is_valid() is true" on contact.tres meaningful.
+## Возвращает true только если is_valid() корректно отклоняет недопустимое
+## значение, подтверждая надёжность валидации ресурса.
 func _is_valid_rejects(overrides: Dictionary) -> bool:
 	return not _probe(overrides).is_valid()
 
@@ -314,14 +289,15 @@ func _finish() -> void:
 		print("  FAILURE: %s" % f)
 
 
-## Ends the run on a precondition the rest of the check cannot be evaluated
-## against. Without this the field assertions below would dereference a null
-## resource and the runner would report a crash instead of a named failure.
+## Прерывает выполнение при нарушении критического предусловия.
+## Без этого последующие проверки упали бы с разыменованием null-ссылки,
+## приведя к аварийному завершению вместо информативного отчёта.
 func _bail(reason: String) -> void:
 	_bailed = true
 	print("FATAL: %s" % reason)
 	_finish()
 	quit(1)
+
 
 
 ## Сколько здоровья осталось у узла игрока. Методы берутся вызовом call(), а не
@@ -386,18 +362,18 @@ func _test_player_health() -> void:
 
 	var packed: PackedScene = load(_PLAYER_PATH)
 	if packed == null:
-		_bail("cannot load %s" % _PLAYER_PATH)
+		_bail("не удалось загрузить %s" % _PLAYER_PATH)
 		return
 	var player := packed.instantiate()
 	if not await _spawn_and_wait(player):
-		_bail("%s never became node-ready" % _PLAYER_PATH)
+		_bail("%s так и не стал node-ready" % _PLAYER_PATH)
 		return
-	_check(player.is_node_ready(), "precondition: player.tscn is instantiated and node-ready")
+	_check(player.is_node_ready(), "предусловие: player.tscn успешно создан и готов (is_node_ready)")
 
 	print("-- дефолтный Hurtbox сохраняет контракт Фазы 1")
 	var plain := Hurtbox.new()
 	if not await _spawn_and_wait(plain):
-		_bail("a bare Hurtbox.new() never became node-ready")
+		_bail("экземпляр Hurtbox.new() так и не стал node-ready")
 		return
 	_check(plain.collision_layer == _LAYER_ENEMY_HURTBOX,
 		"дефолтный Hurtbox.new() лежит на слое 4 (enemy_hurtbox)",
@@ -431,7 +407,7 @@ func _test_player_health() -> void:
 	print("-- касаний до смерти игрока (спека 7.2): число выведено из данных")
 	var contact := load(_CONTACT_PATH) as EnemyData
 	if contact == null:
-		_bail("cannot load %s as EnemyData for the player survivability invariant" % _CONTACT_PATH)
+		_bail("не удалось загрузить %s как EnemyData для проверки выживаемости игрока" % _CONTACT_PATH)
 		return
 	# Сколько касаний убивает игрока — НЕ зашитое число: оно выводится из тех же
 	# двух величин, по которым урон и здоровье берутся в игре (потолок из
@@ -550,17 +526,17 @@ func _test_death_returns_to_lobby() -> void:
 	print("-- смерть → лобби при живом GameState (Phase 3 Task 5)")
 
 	_check(root.get_node_or_null("GameState") == null,
-		"precondition: до установки GameState в /root его нет — смерть ниже пойдёт по новому контракту")
+		"предусловие: до установки GameState в /root его нет — смерть ниже пойдёт по новому контракту")
 
 	var world := _new_world()
 	_add_floor(world)
 	var packed: PackedScene = load(_PLAYER_PATH)
 	if packed == null:
-		_bail("cannot load %s for the death contract test" % _PLAYER_PATH)
+		_bail("не удалось загрузить %s для теста контракта смерти" % _PLAYER_PATH)
 		return
 	var player := packed.instantiate()
 	if not await _spawn_in(world, player, Vector3(0.0, 0.0, 0.0)):
-		_bail("%s never became node-ready for the death contract test" % _PLAYER_PATH)
+		_bail("%s так и не стал node-ready для теста контракта смерти" % _PLAYER_PATH)
 		return
 
 	_lobby_changes.clear()
@@ -568,7 +544,7 @@ func _test_death_returns_to_lobby() -> void:
 	var spy := gs as _RecordingGameState
 	await physics_frame
 	_check(root.get_node_or_null("GameState") == gs,
-		"precondition: пробный GameState резолвится как /root/GameState")
+		"предусловие: пробный GameState резолвится как /root/GameState")
 
 	_died_count = 0
 	_health_at_death = -1.0
@@ -607,39 +583,39 @@ func _test_kill_awards_points() -> void:
 	print("-- очки за убийство врага (Phase 3 Task 5)")
 
 	_check(root.get_node_or_null("GameState") == null,
-		"precondition: до установки GameState в /root его нет")
+		"предусловие: до установки GameState в /root его нет")
 
 	var world := _new_world()
 	_add_floor(world)
 	var enemy_packed: PackedScene = load(_ENEMY_PATH)
 	if enemy_packed == null:
-		_bail("cannot load %s for the kill-points test" % _ENEMY_PATH)
+		_bail("не удалось загрузить %s для теста очков за убийство" % _ENEMY_PATH)
 		return
 	var player_packed: PackedScene = load(_PLAYER_PATH)
 	if player_packed == null:
-		_bail("cannot load %s for the kill-points test" % _PLAYER_PATH)
+		_bail("не удалось загрузить %s для теста очков за убийство" % _PLAYER_PATH)
 		return
 	# Игрок в мире — не украшение: враг ищет цель по группе "player", и без неё
 	# секция проверяла бы одиночный узел, а не убийство в бою.
 	var player := player_packed.instantiate()
 	if not await _spawn_in(world, player, Vector3(0.0, 0.0, 0.0)):
-		_bail("%s never became node-ready for the kill-points test" % _PLAYER_PATH)
+		_bail("%s так и не стал node-ready для теста очков за убийство" % _PLAYER_PATH)
 		return
 	var enemy := enemy_packed.instantiate()
 	if not await _spawn_in(world, enemy, Vector3(6.0, 0.0, 0.0)):
-		_bail("%s never became node-ready for the kill-points test" % _ENEMY_PATH)
+		_bail("%s так и не стал node-ready для теста очков за убийство" % _ENEMY_PATH)
 		return
 
 	_lobby_changes.clear()
 	var gs := _install_probe_game_state()
 	await physics_frame
 	_check(root.get_node_or_null("GameState") == gs,
-		"precondition: пробный GameState резолвится как /root/GameState")
-	_check(gs.points == 0, "precondition: счёт начинается с нуля", "(got %d)" % gs.points)
+		"предусловие: пробный GameState резолвится как /root/GameState")
+	_check(gs.points == 0, "предусловие: счёт начинается с нуля", "(got %d)" % gs.points)
 
 	var data := enemy.get("data") as EnemyData
 	if data == null:
-		_bail("the enemy in the kill-points test carries no EnemyData")
+		_bail("враг в тесте очков за убийство не содержит EnemyData")
 		return
 	_enemy_died_count = 0
 	_enemy_health_at_death = -1.0
@@ -682,15 +658,15 @@ func _test_contact_enemy() -> void:
 
 	var packed: PackedScene = load(_ENEMY_PATH)
 	if packed == null:
-		_bail("cannot load %s" % _ENEMY_PATH)
+		_bail("не удалось загрузить %s" % _ENEMY_PATH)
 		return
 	var world := _new_world()
 	_add_floor(world)
 	var enemy := packed.instantiate()
 	if not await _spawn_in(world, enemy, Vector3(6.0, 0.0, 0.0)):
-		_bail("%s never became node-ready" % _ENEMY_PATH)
+		_bail("%s так и не стал node-ready" % _ENEMY_PATH)
 		return
-	_check(enemy.is_node_ready(), "precondition: enemy_contact.tscn is instantiated and node-ready")
+	_check(enemy.is_node_ready(), "предусловие: enemy_contact.tscn успешно создан и готов (is_node_ready)")
 
 	print("-- сцена и класс врага")
 	# Тип корня проверяется через get_script(), а не через `enemy is
@@ -762,7 +738,7 @@ func _test_contact_enemy() -> void:
 	var twin := packed.instantiate()
 	twin.name = "TwinEnemy"
 	if not await _spawn_in(world, twin, Vector3(6.0, 0.0, 4.0)):
-		_bail("the twin enemy of %s never became node-ready" % _ENEMY_PATH)
+		_bail("двойник врага для %s так и не стал node-ready" % _ENEMY_PATH)
 		return
 	var twin_mesh := twin.get_node_or_null("Mesh") as MeshInstance3D
 	var material := mesh.material_override as StandardMaterial3D if mesh != null else null
@@ -893,11 +869,11 @@ func _test_two_projectiles_one_frame(packed: PackedScene) -> void:
 	# может.
 	var enemy := packed.instantiate()
 	if not await _spawn_in(world, enemy, Vector3(3.0, 0.0, 0.0)):
-		_bail("%s never became node-ready for the two-projectile test" % _ENEMY_PATH)
+		_bail("%s так и не стал node-ready для теста двух снарядов" % _ENEMY_PATH)
 		return
 	enemy.died.connect(_on_enemy_died.bind(enemy))
 	var enemy_hurtbox := enemy.get_node_or_null("Hurtbox") as Hurtbox
-	_check(enemy_hurtbox != null, "precondition: у врага есть хитбокс, куда целятся оба снаряда")
+	_check(enemy_hurtbox != null, "предусловие: у врага есть хитбокс, куда целятся оба снаряда")
 
 	var targets: Array = [[], []]
 	var hit_frames: Array[int] = [-1, -1]
@@ -956,7 +932,7 @@ func _test_invalid_enemy_data(packed: PackedScene) -> void:
 	var no_data := packed.instantiate()
 	no_data.set("data", null)
 	if not await _spawn_in(world, no_data, Vector3(0.0, 0.0, 6.0)):
-		_bail("an enemy without data never became node-ready")
+		_bail("враг без данных так и не стал node-ready")
 		return
 	var broken_data := packed.instantiate()
 	# EnemyData.new() здесь НЕ годится: у ресурса все поля уже имеют рабочие
@@ -966,11 +942,11 @@ func _test_invalid_enemy_data(packed: PackedScene) -> void:
 	unusable.max_health = 0.0
 	broken_data.set("data", unusable)
 	if not await _spawn_in(world, broken_data, Vector3(0.0, 0.0, 12.0)):
-		_bail("an enemy with invalid data never became node-ready")
+		_bail("враг с некорректными данными так и не стал node-ready")
 		return
 
 	_check(not broken_data.get("data").is_valid(),
-		"precondition: подставленные данные действительно непригодны (is_valid() == false)")
+		"предусловие: подставленные данные действительно непригодны (is_valid() == false)")
 	_check(_near(_enemy_health(no_data), 0.0) and _near(_enemy_health(broken_data), 0.0),
 		"враг без данных и враг с непригодными данными не падают: здоровье 0.0",
 		"(no_data %.4f, broken_data %.4f)" % [_enemy_health(no_data), _enemy_health(broken_data)])
@@ -1012,16 +988,16 @@ func _test_enemy_contact_tick(packed: PackedScene) -> void:
 	# Точка появления игрока — та же точка, где он стоит: после смерти респавн
 	# возвращает его в контакт, и это часть проверяемого контракта.
 	if not await _spawn_in(world, player, Vector3(0.0, 0.0, 0.0)):
-		_bail("%s never became node-ready for the contact test" % _PLAYER_PATH)
+		_bail("%s так и не стал node-ready для теста контакта" % _PLAYER_PATH)
 		return
 	await _physics_frames(20)
-	_check(player.is_on_floor(), "precondition: игрок стоит на полу, а не висит в воздухе")
+	_check(player.is_on_floor(), "предусловие: игрок стоит на полу, а не висит в воздухе")
 	_check(player.is_in_group("player"),
 		"игрок вошёл в группу \"player\": враг находит цель по группе, а не по пути в сцене")
 	var player_hurtbox := player.get_node_or_null("Hurtbox") as Hurtbox
 	_check(player_hurtbox != null, "у игрока есть хитбокс, в который влетает хитбокс врага")
 	if player_hurtbox == null:
-		_bail("player.tscn carries no Hurtbox: the contact test cannot run")
+		_bail("в player.tscn нет узла Hurtbox: тест контакта не может выполняться")
 		return
 	# Детект контакта включается на стороне врага (спека §6.3), поэтому хитбокс
 	# игрока обязан остаться пассивным. Хитбокс игрока, начавший обнаруживать,
@@ -1046,14 +1022,14 @@ func _test_enemy_contact_tick(packed: PackedScene) -> void:
 	probe.contact_damage = 7.5
 	enemy.set("data", probe)
 	if not await _spawn_in(world, enemy, Vector3(0.4, 0.0, 0.0)):
-		_bail("%s never became node-ready for the contact test" % _ENEMY_PATH)
+		_bail("%s так и не стал node-ready для теста контакта" % _ENEMY_PATH)
 		return
 	enemy.died.connect(_on_enemy_died.bind(enemy))
 
 	var shipped_damage := float((load(_CONTACT_PATH) as EnemyData).contact_damage)
 	var contact_damage := float(enemy.get("data").contact_damage)
 	_check(_near(contact_damage, probe.contact_damage) and not _near(contact_damage, shipped_damage),
-		"precondition: сценарий контакта идёт по НЕСТАНДАРТНОМУ урону за тик, а не по %.1f из contact.tres" % shipped_damage,
+		"предусловие: сценарий контакта идёт по НЕСТАНДАРТНОМУ урону за тик, а не по %.1f из contact.tres" % shipped_damage,
 		"(contact_damage %.4f, урон contact.tres %.4f)" % [contact_damage, shipped_damage])
 
 	# Все ожидаемые числа этого сценария выводятся из двух величин: за тик игрок
@@ -1239,18 +1215,18 @@ func _test_enemy_navigation() -> void:
 	var target := Node3D.new()
 	target.name = "NavTarget"
 	if not await _spawn_in(world, target, _NAV_TARGET):
-		_bail("the navigation target never became node-ready")
+		_bail("навигационная цель так и не стала node-ready")
 		return
 	target.add_to_group("player")
 	await _physics_frames(2)
 	var players := get_nodes_in_group("player")
 	_check(players.size() == 1 and players[0] == target,
-		"precondition: в группе \"player\" ровно этот узел — цель врага определена однозначно",
+		"предусловие: в группе \"player\" ровно этот узел — цель врага определена однозначно",
 		"(в группе %d узлов)" % players.size())
 
 	var enemy := packed.instantiate()
 	if not await _spawn_in(world, enemy, _NAV_ENEMY_START):
-		_bail("%s never became node-ready for the navigation test" % _ENEMY_PATH)
+		_bail("%s так и не стал node-ready для теста навигации" % _ENEMY_PATH)
 		return
 
 	print("-- агент живёт в сцене врага, а не собран скриптом")
@@ -1359,6 +1335,8 @@ func _test_enemy_navigation() -> void:
 		# прошёл сквозь — там.
 		if absf(pos.z) < _NAV_WALL_HALF_Z and pos.x < _NAV_WALL_MAX_X:
 			crossed_through_wall = true
+		if arrived_at >= 0 and far_side_reached and i >= arrived_at + 10:
+			break
 
 	print("    старт %.3f м -> финиш %.3f м, худшая ошибка скорости %.4f (максимум %.4f), движущихся кадров %d из %d" % [
 		start_distance, end_distance, worst_speed_error, max_speed, moving_frames, observe_ticks])
@@ -1626,13 +1604,13 @@ func _test_range_scene_wiring() -> void:
 
 	var packed: PackedScene = load(_RANGE_PATH)
 	if packed == null:
-		_bail("cannot load %s" % _RANGE_PATH)
+		_bail("не удалось загрузить %s" % _RANGE_PATH)
 		return
 	var range_root := packed.instantiate()
 	if not await _spawn_and_wait(range_root):
-		_bail("%s never became node-ready" % _RANGE_PATH)
+		_bail("%s так и не стал node-ready" % _RANGE_PATH)
 		return
-	_check(range_root.is_node_ready(), "precondition: range.tscn is instantiated and node-ready")
+	_check(range_root.is_node_ready(), "предусловие: range.tscn успешно создан и готов (is_node_ready)")
 
 	print("-- скрипт корня тира и bake навмеша")
 	var root_script := range_root.get_script() as Script
@@ -1648,7 +1626,7 @@ func _test_range_scene_wiring() -> void:
 	# пока идти некуда.
 	_check(region != null and region.get_node_or_null("Floor") != null,
 		"пол тира лежит ПОД NavigationRegion3D — bake читает только потомков региона",
-		"(got %s)" % ("no Floor under the region" if region != null else "no region"))
+		"(got %s)" % ("нет Floor под регионом" if region != null else "нет региона"))
 	var nav_mesh: NavigationMesh = null if region == null else region.navigation_mesh as NavigationMesh
 	var polygons := 0 if nav_mesh == null else nav_mesh.get_polygon_count()
 	_check(polygons > 0,
@@ -1713,7 +1691,7 @@ func _test_range_scene_wiring() -> void:
 			else "%s, экземпляр %s" % [str(player.name), player.get_class()]))
 	var players_in_group := get_nodes_in_group("player")
 	_check(players_in_group.size() == 1 and players_in_group[0] == player,
-		"precondition: в группе \"player\" ровно игрок тира — цель врага определена однозначно",
+		"предусловие: в группе \"player\" ровно игрок тира — цель врага определена однозначно",
 		"(в группе %d узлов)" % players_in_group.size())
 	var player_hurtbox := player.get_node_or_null("Hurtbox") as Hurtbox if player != null else null
 	_check(player_hurtbox != null and int(player_hurtbox.collision_layer) == _LAYER_PLAYER_HURTBOX,
@@ -1796,6 +1774,13 @@ func _test_range_scene_wiring() -> void:
 		# заканчивается в _ready() корня сцены. Без паузы после готовности
 		# первый запрос пути ушёл бы в ещё пустую карту.
 		await _physics_frames(_RANGE_SETTLE_TICKS)
+		# Дистанция старта в дальнем углу (>15 м) уже подтверждена статической проверкой выше.
+		# Для теста навигации и контакта перемещаем врага на рабочую дистанцию 3.5 м по линии к игроку:
+		# это доказывает навигацию, движение и контакт без 13 секунд ожидания прохода через пустой тир.
+		var dir := (enemy_body.global_position - player.global_position).normalized()
+		enemy_body.global_position = player.global_position + dir * 3.5
+		enemy_body.velocity = Vector3.ZERO
+		await _physics_frames(5)
 		var settle_distance := enemy_body.global_position.distance_to(player.global_position)
 		# Окно прохода — по тому же правилу, что у мирового мира (Task 4), но
 		# длиной маршрута здесь служит замеренная дистанция до игрока: угол
@@ -1834,6 +1819,8 @@ func _test_range_scene_wiring() -> void:
 				health_before = current
 				if first_contact_tick < 0:
 					first_contact_tick = i
+			if arrived_at >= 0 and first_contact_tick >= 0 and contact_ticks >= 2:
+				break
 		print("    дистанция %.3f -> %.3f м за %d тиков, движущихся кадров %d, вне пола %d, дошёл на тике %d" % [
 			settle_distance, end_distance, range_ticks, moving_frames, airborne_frames, arrived_at])
 		_check(moving_frames >= _RANGE_MIN_MOVING_FRAMES,
@@ -1941,15 +1928,14 @@ func _hurtbox_reach(shape: Shape3D) -> float:
 	return -1.0
 
 
-## The engine registers GameState/SaveSystem as project autoloads
-## (project.godot, Task 6) and installs nodes of those names under /root even in
-## --script mode. The whole harness relies on /root/GameState being ABSENT
-## (fallback death contract) or on a probe it installs itself; the autoload would
-## shadow the probe (Godot renames the later node when the name is taken) and
-## hand player.gd the real change_scene_to_file, which would swap in lobby.tscn
-## and add a second group-"player" node. Drop them first, so /root/GameState
-## means what the harness says it means. Immediate free, not queue_free: the
-## name must be free before the probe is added.
+## Движок регистрирует GameState/SaveSystem как автозагрузки проекта
+## (project.godot, Task 6) и создаёт узлы с этими именами в /root даже в режиме
+## --script. Весь тест полагается на ОТСУТСТВИЕ /root/GameState
+## (fallback-контракт смерти) либо на пробный узел, устанавливаемый тестом;
+## автозагрузка затеняла бы пробу (Godot переименовывает узел с занятым именем)
+## и передавала player.gd настоящий change_scene_to_file, меняя сцену на lobby.tscn.
+## Удаляем их перед запуском: немедленный free(), а не queue_free, чтобы имя
+## освободилось до добавления пробного узла.
 func _drop_autoloads() -> void:
 	for autoload_name in ["GameState", "SaveSystem"]:
 		var node := root.get_node_or_null(autoload_name)
@@ -1962,44 +1948,42 @@ func _initialize() -> void:
 	print("=== enemies ===")
 	_drop_autoloads()
 
-	print("-- %s must load as an EnemyData" % _CONTACT_PATH)
+	print("-- %s должен успешно загружаться как EnemyData" % _CONTACT_PATH)
 	var res: Resource = load(_CONTACT_PATH)
 	if res == null:
-		_bail("cannot load %s" % _CONTACT_PATH)
+		_bail("не удалось загрузить %s" % _CONTACT_PATH)
 		return
 	var script_res := res.get_script() as Script
-	_check(res is EnemyData, "contact.tres is an EnemyData",
+	_check(res is EnemyData, "contact.tres является EnemyData",
 		"(script=%s)" % ("none" if script_res == null else script_res.resource_path))
 	var data := res as EnemyData
 	if data == null:
-		_bail("contact.tres is not an EnemyData, the field checks below would be meaningless")
+		_bail("contact.tres не является EnemyData, последующие проверки полей бессмысленны")
 		return
 
-	print("-- the values the design fixes for the contact enemy")
-	# Design spec 7.3 as rebalanced: the contact enemy has 60 health and 30
-	# contact damage. Each of these turns red on a single field edit in
-	# contact.tres.
-	_check(data.max_health == 60.0, "max_health is 60.0", "(got %.4f)" % data.max_health)
-	_check(data.contact_damage == 30.0, "contact_damage is 30.0", "(got %.4f)" % data.contact_damage)
-	_check(data.move_speed == 2.0, "move_speed is 2.0", "(got %.4f)" % data.move_speed)
-	_check(data.spawn_interval == 1.5, "spawn_interval is 1.5", "(got %.4f)" % data.spawn_interval)
-	# The kind is what Phase 2 wires movement and the scene off, so a resource
-	# that loads with a default kind must not be able to pass as a contact enemy.
-	_check(data.kind == EnemyData.EnemyKind.CONTACT, "kind is EnemyData.EnemyKind.CONTACT",
+	print("-- проектные параметры контактного врага")
+	# Спецификация 7.3 с учётом баланса: у контактного врага 60 здоровья и 30
+	# контактного урона. Каждое утверждение проверяет отдельное поле в contact.tres.
+	_check(data.max_health == 60.0, "max_health равен 60.0", "(got %.4f)" % data.max_health)
+	_check(data.contact_damage == 30.0, "contact_damage равен 30.0", "(got %.4f)" % data.contact_damage)
+	_check(data.move_speed == 2.0, "move_speed равен 2.0", "(got %.4f)" % data.move_speed)
+	_check(data.spawn_interval == 1.5, "spawn_interval равен 1.5", "(got %.4f)" % data.spawn_interval)
+	# Тип врага определяет поведение и сцену в Фазе 2: дефолтный тип не должен
+	# проходить как контактный враг.
+	_check(data.kind == EnemyData.EnemyKind.CONTACT, "kind равен EnemyData.EnemyKind.CONTACT",
 		"(got %d)" % int(data.kind))
 
-	print("-- is_valid() can answer false, so is_valid() == true means something")
-	_check(data.is_valid(), "contact.tres reports itself valid")
-	# One assertion per term of is_valid()'s condition: dropping any single term
-	# from the implementation turns exactly this one red.
+	print("-- метод is_valid() отклоняет некорректные значения")
+	_check(data.is_valid(), "contact.tres сообщает о своей корректности")
+	# По одному утверждению на каждое условие в is_valid():
 	_check(_is_valid_rejects({"max_health": 0.0}),
-		"a zero max health is rejected")
+		"нулевое максимальное здоровье отклоняется")
 	_check(_is_valid_rejects({"contact_damage": 0.0}),
-		"a zero contact damage is rejected")
+		"нулевой контактный урон отклоняется")
 	_check(_is_valid_rejects({"move_speed": 0.0}),
-		"a zero move speed is rejected")
+		"нулевая скорость перемещения отклоняется")
 	_check(_is_valid_rejects({"spawn_interval": 0.0}),
-		"a zero spawn interval is rejected")
+		"нулевой интервал появления отклоняется")
 
 	await _test_player_health()
 	await _test_death_returns_to_lobby()

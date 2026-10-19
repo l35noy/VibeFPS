@@ -1,41 +1,35 @@
-﻿extends SceneTree
+extends SceneTree
 
-## Weapon harness for VibeFPS: the pistol's magazine, its rate limit, its
-## reload and the input gate around all three.
+## Тестовый сценарий оружия для VibeFPS: магазин пистолета, ограничение темпа
+## стрельбы, перезарядка и гейт ввода.
 ##
-## The pistol is built here, in code, with a plain Node3D standing in for the
-## fire source and no player anywhere in the scene: what is under test is
-## magazine bookkeeping, the fire interval and the gate, and none of that needs
-## a character or a level. Building it the way Task 5's pistol.tscn will is the
-## point -- the pistol is handed a PackedScene for the projectile and is asked
-## to instantiate it, so "decrement the magazine only after the projectile
-## exists" is exercised for real rather than assumed.
+## Пистолет собирается здесь программно с обычным Node3D в роли источника огня
+## и без присутствия игрока на сцене: тестируется учёт патронов магазина,
+## интервал стрельбы и гейт ввода, для чего персонаж или уровень не требуются.
+## Пистолету передаётся PackedScene снаряда и запрашивается его создание,
+## что позволяет реально проверить списание патрона только после создания снаряда.
 ##
-## Headless cannot capture the cursor at all: Input.set_mouse_mode() is a silent
-## no-op there, so Input.mouse_mode stays VISIBLE for the whole run and a gate
-## reading it would deny everything. Exactly as in tests/movement.gd, the pistol
-## is handed a subclass that answers the gate with an explicit mode; every other
-## line under test is the real pistol.gd, and the harness asserts that the seam
-## is live and that the untouched pistol.gd reads the engine's own mouse mode.
+## В headless-режиме курсор мыши захватить невозможно: Input.set_mouse_mode() там
+## игнорируется, и Input.mouse_mode остаётся VISIBLE. Аналогично tests/movement.gd,
+## пистолету передаётся подкласс с явным режимом курсора для гейта ввода.
 ##
-## Waits are bounded in seconds of wall clock, not in frames. The weapon's
-## timers ARE the thing under test and they are in seconds; a check that counted
-## frames would be asserting the headless frame rate instead of the rate limit.
+## Ожидания ограничены реальным временем (в секундах), а не кадрами, так как
+## таймеры оружия работают в секундах.
 ##
-## Run: godot --headless --path . --script res://tests/weapon.gd
-##      .\tools\run_checks.ps1 weapon
+## Запуск:
+##   godot --headless --path . --script res://tests/weapon.gd
+##   powershell -File .\tools\run_checks.ps1 weapon
 
-## Stand-in for pistol.gd, used only by this harness.
+## Тестовый подкласс pistol.gd для подмены режима курсора.
 class _PistolProbe extends "res://weapons/pistol/pistol.gd":
-	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
+	## Режим курсора мыши для проверки гейта ввода вместо Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
 	func _mouse_mode_for_play_input() -> int:
 		return gate_mouse_mode
 
 
-## Records everything the pistol announces, with wall-clock stamps on the two
-## reload signals so the check can measure the reload in seconds.
+## Записывает сигналы пистолета с временными метками для замера длительности перезарядки.
 class _Log extends RefCounted:
 	var fired: int = 0
 	var reload_started: int = 0
@@ -69,14 +63,10 @@ class _Log extends RefCounted:
 
 const _PISTOL_SCRIPT_PATH := "res://weapons/pistol/pistol.gd"
 const _PISTOL_DATA_PATH := "res://data/weapons/pistol.tres"
-## The shipped pistol, loaded rather than rebuilt. The barrel marker is scene
-## wiring, and a marker the harness invents for itself would be a marker the
-## game never loads.
+## Готовая сцена пистолета, загружаемая из ресурсов.
 const _PISTOL_SCENE_PATH := "res://weapons/pistol/pistol.tscn"
 
-## The values the design fixes for the pistol. They are restated here so a
-## balance edit to pistol.tres cannot silently turn the harness into a check of
-## different numbers than the one it claims to verify.
+## Проектные параметры пистолета для защиты от непреднамеренных правок баланса.
 const _EXPECTED_MAGAZINE := 18
 const _EXPECTED_RELOAD_TIME := 1.2
 const _EXPECTED_INTERVAL := 0.4
@@ -84,43 +74,25 @@ const _EXPECTED_PROJECTILE_SPEED := 70.0
 const _EXPECTED_DAMAGE := 30.0
 const _EXPECTED_LIFETIME := 4.0
 
-## Ceiling for every timed wait. Generous, because it only has to keep a broken
-## pistol from turning the check into a 120 s runner timeout; a healthy pistol
-## leaves it far behind.
+## Максимальный таймаут ожидания по реальному времени.
 const _WAIT_CAP_SECONDS := 15.0
-## How far a measured timer may overshoot its nominal value. The timers are real
-## seconds drained by per-frame deltas, so the answer overshoots by at most one
-## frame -- and still nowhere near enough to hide a doubled interval, a reset
-## timer or a reload that never ends.
+## Допустимое превышение таймера из-за дискретности кадров.
 const _TIMER_TOLERANCE := 0.35
-## Float slack on the short side of a timer, so accumulated delta rounding can
-## never fake a timer that ended early.
+## Погрешность для защиты от преждевременного завершения таймера.
 const _TIMER_EPSILON := 0.05
-## How many physics ticks the flight is watched for after the aim source is
-## turned and moved. At the shipped 120 Hz and 70 m/s that is half a second and
-## 35 m of flight -- long enough for a bend of the parent to be unmistakable,
-## short enough to stay inside the 4 s projectile lifetime.
+## Число физических тиков наблюдения за полётом снаряда.
 const _TRAJECTORY_TICKS := 60
-## How far off its own line the projectile may drift, in metres. The bug this
-## catches moves a shot sideways by METRES (a parent yaw of 45 deg rotates the
-## whole subtree around the pivot), while float32 noise over 35 m is about
-## 3e-6 m. Centimetres separate the two with four orders of magnitude to spare.
+## Допустимое боковое отклонение траектории снаряда в метрах.
 const _TRAJECTORY_DRIFT_TOLERANCE := 0.05
-## How far along the line the projectile must actually have travelled for the
-## drift measurement above to mean anything. A projectile that never moved
-## reports a drift of exactly zero and would satisfy the tolerance without
-## having flown at all.
+## Минимальная дистанция полёта снаряда для валидности замера траектории.
 const _TRAJECTORY_MIN_TRAVEL := 2.0
-## How many seconds of real frames the startup check watches a weapon that
-## entered the tree with the button held. Two and a half times the 0.4 s rate
-## limit, so a pistol that fires on level alone would have spent three rounds.
+## Длительность наблюдения за оружием при зажатой на старте кнопке (в секундах).
 const _NO_SHOT_WATCH_SECONDS := 1
 
 var _failures: PackedStringArray = []
 var _checks := 0
 var _data: WeaponData
-## One PackedScene for every pistol in this harness, standing in for the
-## projectile.tscn that Task 5 will build on disk.
+## PackedScene снаряда в памяти для подстановки в оружие.
 var _projectile_scene: PackedScene
 
 
@@ -139,9 +111,7 @@ func _finish() -> void:
 		print("  FAILURE: %s" % f)
 
 
-## Ends the run on a precondition the rest of the check cannot be evaluated
-## against, so the runner gets a named failure and a non-zero exit code instead
-## of a crash halfway through.
+## Прерывает выполнение при нарушении критического предусловия.
 func _bail(reason: String) -> void:
 	print("FATAL: %s" % reason)
 	_finish()
@@ -172,22 +142,15 @@ func _now_ms() -> int:
 	return Time.get_ticks_msec()
 
 
-## Releases the fire action and lets at least one real process frame go by,
-## so a pistol whose arming latch needs an observed release has actually seen
-## one before the next press is read as input. Scenarios that fire through the
-## real input path start here; a pistol that entered the tree with the button
-## already down is exactly what the startup check is about.
+## Сбрасывает действие fire и ожидает кадры обработки, чтобы защёлка первого
+## нажатия зафиксировала отпущенное состояние кнопки.
 func _settle_fire_released() -> void:
 	Input.action_release("fire")
 	await process_frame
 	await process_frame
 
 
-## A reload key event, delivered through the real input path. Reload is read in
-## the pistol's _unhandled_input, and Input.action_press alone never reaches
-## _unhandled_input (tests/movement.gd and tests/interact.gd pin the same rule),
-## so the press has to be a parsed key event matching the physical R binding
-## declared in project.godot.
+## Создаёт событие нажатия/отпускания клавиши перезарядки (R) для отправки через Input.
 func _reload_key_event(pressed: bool) -> InputEventKey:
 	var ev := InputEventKey.new()
 	ev.physical_keycode = KEY_R
@@ -196,10 +159,8 @@ func _reload_key_event(pressed: bool) -> InputEventKey:
 	return ev
 
 
-## The aim source of the trajectory scenario hangs under a parent that the
-## scenario moves afterwards. Every other scenario's aim source hangs straight
-## off the world and nothing ever touches its ancestors -- which is precisely
-## why a shot could stay glued to it and go unnoticed.
+## Создаёт источник прицеливания внутри родительского узла-поворота для проверки
+## независимости траектории полёта снаряда от движения родителя.
 func _new_aim_under_pivot(world: Node3D) -> Node3D:
 	var pivot := Node3D.new()
 	pivot.name = "Pivot"
@@ -210,9 +171,7 @@ func _new_aim_under_pivot(world: Node3D) -> Node3D:
 	return pivot
 
 
-## A player's camera, in the pose player.tscn gives it: high up, and the
-## current one in the viewport. pistol.tscn leaves fire_rate_source empty on
-## purpose, so this is the node the pistol actually aims from in the game.
+## Создаёт тестовую камеру игрока с положением на высоте глаз (1.7 м).
 func _new_eye(world: Node3D) -> Camera3D:
 	var eye := Camera3D.new()
 	eye.name = "Eye"
@@ -222,12 +181,7 @@ func _new_eye(world: Node3D) -> Camera3D:
 	return eye
 
 
-## The shipped pistol's geometry grafted onto a probe. The probe is what
-## answers the input gate with an explicit mouse mode (headless cannot capture
-## the cursor); the children are the scene's own, MOVED rather than copied, so
-## the barrel marker under test is the one pistol.tscn really ships. The
-## exports are set before the node enters the tree, because _ready() fills the
-## magazine from them and a magazine filled from a null data is empty forever.
+## Создаёт экземпляр пистолета из загруженной сцены, прививая геометрию тестовому зонду.
 func _new_pistol_from_scene(world: Node3D, scene: PackedScene,
 		data: WeaponData, projectiles := true) -> _PistolProbe:
 	var geometry := scene.instantiate()
@@ -238,8 +192,6 @@ func _new_pistol_from_scene(world: Node3D, scene: PackedScene,
 		pistol.projectile_scene = _projectile_scene
 	for child in geometry.get_children():
 		geometry.remove_child(child)
-		# owner belongs to the scene tree it was packed from; carrying it over
-		# would make Godot complain that the probe now owns nodes it never packed.
 		child.owner = null
 		pistol.add_child(child)
 	geometry.free()
@@ -248,16 +200,15 @@ func _new_pistol_from_scene(world: Node3D, scene: PackedScene,
 		await process_frame
 		if pistol.is_node_ready():
 			return pistol
-	print("FATAL: the pistol never became ready")
+	print("FATAL: пистолет так и не стал ready")
 	return pistol
 
 
 # --------------------------------------------------------------------------
-# world builders
+# функции построения мира
 # --------------------------------------------------------------------------
 
-## One scenario's world. Freeing it at the end of the scenario takes the pistol,
-## the dummy fire source and every projectile the pistol spawned with it.
+## Создаёт изолированный тестовый мир для отдельного сценария.
 func _new_world() -> Node3D:
 	var world := Node3D.new()
 	world.name = "World"
@@ -265,16 +216,7 @@ func _new_world() -> Node3D:
 	return world
 
 
-## The stand-in for the player's camera, and the pistol's fire_rate_source: it
-## decides the AIM and nothing else. `yaw` turns it, so a shot that follows the
-## aim source's forward axis is distinguishable from one that fires along a
-## hardcoded world axis.
-##
-## Named for what it is, not for what it looks like: since the barrel split,
-## "Muzzle" in this project means the pistol's Muzzle marker -- the spawn point
-## -- and a fire source wearing that name would read as one. The node this
-## builds is deliberately not called Muzzle, so a scenario cannot accidentally
-## satisfy the barrel lookup with it.
+## Создаёт узел-источник прицеливания с заданным углом поворота вокруг оси Y.
 func _new_aim_source(world: Node3D, yaw := 0.0) -> Node3D:
 	var aim := Node3D.new()
 	aim.name = "AimSource"
@@ -283,11 +225,7 @@ func _new_aim_source(world: Node3D, yaw := 0.0) -> Node3D:
 	return aim
 
 
-## A node added to the tree is not ready the moment add_child() returns: the
-## engine queues it and runs _ready() on a later main-loop pass. The harness
-## waits for that before measuring anything about a fresh pistol, otherwise
-## "a fresh pistol has a full magazine" would be a claim about a node whose
-## _ready() had not run yet.
+## Создаёт экземпляр тестового зонда пистолета и ожидает его готовности (ready).
 func _new_pistol(world: Node3D, data: WeaponData, aim: Node3D,
 		with_projectiles := true) -> _PistolProbe:
 	var pistol := _PistolProbe.new()
@@ -301,7 +239,7 @@ func _new_pistol(world: Node3D, data: WeaponData, aim: Node3D,
 		await process_frame
 		if pistol.is_node_ready():
 			return pistol
-	print("FATAL: the pistol never became ready")
+	print("FATAL: пистолет так и не стал ready")
 	return pistol
 
 
@@ -314,9 +252,7 @@ func _watch(pistol: _PistolProbe) -> _Log:
 	return log
 
 
-## The projectiles under `parent`. The pistol parents every shot to its AIM
-## source -- that is the lifecycle parent -- so this is how the harness finds
-## live bullets. The spawn point is a different node entirely.
+## Возвращает список активных узлов Projectile среди дочерних узлов родителя.
 func _live_projectiles(parent: Node3D) -> Array[Projectile]:
 	var out: Array[Projectile] = []
 	for child in parent.get_children():
@@ -325,9 +261,7 @@ func _live_projectiles(parent: Node3D) -> Array[Projectile]:
 	return out
 
 
-## The projectile scene, packed in memory. Task 5 builds projectile.tscn; until
-## then this stands in for it, with the CollisionShape3D that Task 2 found to be
-## mandatory -- an Area3D with no shape finds nothing.
+## Собирает и упаковывает в памяти минимальную сцену снаряда с CollisionShape3D.
 func _build_projectile_scene() -> PackedScene:
 	var bullet := Projectile.new()
 	bullet.name = "Projectile"
@@ -337,8 +271,6 @@ func _build_projectile_scene() -> PackedScene:
 	sphere.radius = 0.08
 	shape.shape = sphere
 	bullet.add_child(shape)
-	# pack() stores only children the packed root owns, exactly as the editor
-	# does when it saves a scene.
 	shape.owner = bullet
 	var packed := PackedScene.new()
 	var err := packed.pack(bullet)
@@ -355,28 +287,27 @@ func _signal_arg_count(node: Object, signal_name: String) -> int:
 	return -1
 
 
-## The hint string an @export carries ("PackedScene", "Node3D", ...), which is
-## how the harness sees the declared type of an export.
+## Возвращает строку подсказки свойства (@export) для проверки объявленного типа.
 func _property_hint(node: Object, property_name: String) -> String:
 	for entry in node.get_property_list():
 		if String(entry.get("name", "")) == property_name:
 			return String(entry.get("hint_string", ""))
-	return "<missing>"
+	return "<отсутствует>"
 
 
 # --------------------------------------------------------------------------
-# entry point
+# точка входа
 # --------------------------------------------------------------------------
 
 func _initialize() -> void:
 	print("=== VibeFPS weapon test ===")
 	_data = load(_PISTOL_DATA_PATH) as WeaponData
 	if _data == null:
-		_bail("cannot load %s as a WeaponData" % _PISTOL_DATA_PATH)
+		_bail("не удалось загрузить %s как WeaponData" % _PISTOL_DATA_PATH)
 		return
 	_projectile_scene = _build_projectile_scene()
 	if _projectile_scene == null:
-		_bail("cannot pack the in-memory projectile scene")
+		_bail("не удалось упаковать сцену снаряда в памяти")
 		return
 
 	_test_source_contract()
@@ -402,199 +333,169 @@ func _initialize() -> void:
 
 
 # --------------------------------------------------------------------------
-# checks
+# проверки
 # --------------------------------------------------------------------------
 
-## Two rules the brief fixes that no behavioural check can see, because a
-## violation shows up as a subtly wrong frame budget rather than a named
-## failure: the timers must run in _process (firing is an action at render
-## cadence, not a physics simulation) and can_fire() must ask InputGate rather
-## than reading Input.mouse_mode itself.
+## Проверяет архитектурные правила: таймеры работают в _process (не в тиках физики),
+## а can_fire() запрашивает разрешение у InputGate.
 func _test_source_contract() -> void:
-	print("-- source contract: the frame the timers run in, and who asks the gate")
+	print("-- контракт исходного кода: цикл таймеров и опрос гейта ввода")
 	var source := FileAccess.get_file_as_string(_PISTOL_SCRIPT_PATH)
-	_check(source != "", "pistol.gd is readable", "(%d bytes)" % source.length())
+	_check(source != "", "pistol.gd доступен для чтения", "(%d байт)" % source.length())
 	_check(source.contains("func _process(delta"),
-		"pistol.gd runs its timers in _process, not in a physics tick")
+		"pistol.gd обрабатывает таймеры в _process, а не в физическом тике")
 	_check(not source.contains("func _physics_process"),
-		"pistol.gd declares no _physics_process: the fire interval is in seconds")
+		"pistol.gd не объявляет _physics_process: интервал стрельбы измеряется в секундах")
 	_check(source.count("InputGate.is_play_input_allowed(") >= 1,
-		"can_fire() asks InputGate for permission",
-		"(call sites=%d)" % source.count("InputGate.is_play_input_allowed("))
+		"can_fire() запрашивает разрешение у InputGate",
+		"(мест вызова=%d)" % source.count("InputGate.is_play_input_allowed("))
 
 
-## Task 5 builds pistol.tscn against these names, and a renamed export or a
-## renamed signal is a silent break for it.
+## Проверяет объявленный класс, экспортируемые свойства, методы и сигналы.
 func _test_contracts() -> void:
-	print("-- contracts: the class, exports, methods and signals Task 5 binds to")
+	print("-- контракты: класс, экспорт, методы и сигналы для связывания")
 	var script := load(_PISTOL_SCRIPT_PATH) as Script
-	_check(script != null, "pistol.gd loads")
+	_check(script != null, "pistol.gd успешно загружается")
 	if script == null:
 		return
 	_check(script.get_global_name() == "Pistol",
-		"pistol.gd declares class_name Pistol", "(got \"%s\")" % script.get_global_name())
-	_check(script.get_instance_base_type() == "Node3D", "Pistol extends Node3D",
+		"pistol.gd объявляет class_name Pistol", "(got \"%s\")" % script.get_global_name())
+	_check(script.get_instance_base_type() == "Node3D", "Pistol расширяет Node3D",
 		"(got %s)" % script.get_instance_base_type())
 
 	var pistol: Node = script.new()
 	for method in ["can_fire", "try_fire", "start_reload", "current_mag",
 			"is_reloading", "reset_for_scene_change"]:
-		_check(pistol.has_method(method), "Pistol exposes %s()" % method)
+		_check(pistol.has_method(method), "Pistol содержит метод %s()" % method)
 	for signal_name in ["fired", "reload_started", "reload_finished", "magazine_changed"]:
-		_check(pistol.has_signal(signal_name), "Pistol exposes the %s signal" % signal_name)
+		_check(pistol.has_signal(signal_name), "Pistol объявляет сигнал %s" % signal_name)
 	_check(_signal_arg_count(pistol, "magazine_changed") == 2,
-		"magazine_changed carries (current, capacity)",
+		"сигнал magazine_changed принимает (current, capacity)",
 		"(got %d args)" % _signal_arg_count(pistol, "magazine_changed"))
 	_check(_property_hint(pistol, "data") == "WeaponData",
-		"data is a WeaponData export", "(got \"%s\")" % _property_hint(pistol, "data"))
+		"data является экспортом типа WeaponData", "(got \"%s\")" % _property_hint(pistol, "data"))
 	_check(_property_hint(pistol, "projectile_scene") == "PackedScene",
-		"projectile_scene is a PackedScene export",
+		"projectile_scene является экспортом типа PackedScene",
 		"(got \"%s\")" % _property_hint(pistol, "projectile_scene"))
 	_check(_property_hint(pistol, "fire_rate_source") == "Node3D",
-		"fire_rate_source is a Node3D export",
+		"fire_rate_source является экспортом типа Node3D",
 		"(got \"%s\")" % _property_hint(pistol, "fire_rate_source"))
-	# Unassigned, because pistol.tscn leaves it empty on purpose and the pistol
-	# has to fall back to the player's own camera.
 	_check(pistol.get("fire_rate_source") == null,
-		"fire_rate_source is empty by default, so the pistol falls back to the camera")
+		"fire_rate_source по умолчанию пуст: пистолет использует камеру игрока")
 	pistol.free()
 
 
-## The gate is only trustworthy if the harness really is driving it. If the seam
-## were dead, every "the gate blocks firing" assertion below would pass for the
-## wrong reason -- the pistol would deny itself whatever the mouse mode was.
+## Проверяет корректность работы гейта ввода в тестовом окружении.
 func _test_gate_harness() -> void:
-	print("-- gate harness: the seam is live and pistol.gd reads Input.mouse_mode")
+	print("-- проверка гейта ввода: зонд активен и pistol.gd читает Input.mouse_mode")
 	var script := load(_PISTOL_SCRIPT_PATH) as Script
 	var stock: Node = script.new()
 	_check(int(stock.call("_mouse_mode_for_play_input")) == Input.mouse_mode,
-		"the untouched pistol.gd asks the engine for the mouse mode",
+		"немодифицированный pistol.gd запрашивает режим мыши у движка",
 		"(mouse_mode=%d)" % Input.mouse_mode)
 	stock.free()
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
-		"precondition: headless really cannot capture the cursor",
+		"предусловие: headless-режим не захватывает курсор",
 		"(mouse_mode=%d)" % Input.mouse_mode)
 	_check(InputGate.is_play_input_allowed(Input.MOUSE_MODE_CAPTURED),
-		"the gate allows play input while the cursor is captured")
+		"гейт разрешает игровой ввод при захваченном курсоре")
 	_check(not InputGate.is_play_input_allowed(Input.MOUSE_MODE_VISIBLE),
-		"the gate denies play input while the cursor is free")
+		"гейт блокирует игровой ввод при свободном курсоре")
 
 
 func _test_starting_magazine() -> void:
-	print("-- start: a fresh pistol has a full magazine and nothing else going on")
+	print("-- начальное состояние: новый пистолет имеет полный магазин")
 	var world := _new_world()
 	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
-		"a fresh pistol starts with a full magazine",
-		"(got %d of %d)" % [pistol.current_mag(), _EXPECTED_MAGAZINE])
-	_check(not pistol.is_reloading(), "a fresh pistol is not reloading")
-	_check(pistol.can_fire(), "a fresh pistol with valid data can fire")
-	_check(log.fired == 0, "nothing fired just by existing")
-	# magazine_changed reports changes. The initial count is read with
-	# current_mag(), and a signal that fires on every node that ever appeared
-	# would be a HUD that redraws the ammo count for no reason.
+		"новый пистолет начинает с полным магазином",
+		"(got %d из %d)" % [pistol.current_mag(), _EXPECTED_MAGAZINE])
+	_check(not pistol.is_reloading(), "новый пистолет не находится в процессе перезарядки")
+	_check(pistol.can_fire(), "новый пистолет с валидными данными готов к стрельбе")
+	_check(log.fired == 0, "при создании пистолета выстрелов не происходит")
 	_check(log.magazine.is_empty(),
-		"magazine_changed stays quiet on start: it announces changes, not existence",
+		"magazine_changed молчит на старте: он оповещает об изменениях, а не о создании",
 		"(got %s)" % str(log.magazine))
 	world.free()
 
 
-## One shot has to do all of this at once: consume exactly one round, announce
-## itself once, report the new count with the capacity, and put a projectile
-## into the world configured from the weapon data and launched along the fire
-## source's forward axis.
+## Один выстрел: расходует один патрон, испускает сигнал и создаёт летящий снаряд.
 func _test_single_shot() -> void:
-	print("-- one shot: one round, one signal, one flying projectile")
+	print("-- одиночный выстрел: один патрон, один сигнал, летящий снаряд")
 	var world := _new_world()
 	var aim := _new_aim_source(world)
 	var pistol := await _new_pistol(world, _data, aim)
 	var log := _watch(pistol)
 
-	_check(pistol.try_fire(), "try_fire() reports the shot it made")
+	_check(pistol.try_fire(), "try_fire() сообщает об успешном выстреле")
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"the magazine lost exactly one round", "(got %d)" % pistol.current_mag())
-	_check(log.fired == 1, "fired arrived exactly once", "(got %d)" % log.fired)
+		"магазин уменьшился ровно на один патрон", "(got %d)" % pistol.current_mag())
+	_check(log.fired == 1, "сигнал fired испущен ровно один раз", "(got %d)" % log.fired)
 	_check(log.magazine.size() == 1,
-		"magazine_changed arrived once for the shot", "(got %d)" % log.magazine.size())
+		"сигнал magazine_changed сработал один раз на выстрел", "(got %d)" % log.magazine.size())
 	_check(log.magazine.size() == 1
 			and log.last_magazine() == Vector2i(_EXPECTED_MAGAZINE - 1, _EXPECTED_MAGAZINE),
-		"magazine_changed carries the new count and the capacity",
+		"magazine_changed передаёт новое количество патронов и вместимость магазина",
 		"(got %s)" % str(log.magazine))
 
 	var bullets := _live_projectiles(aim)
-	_check(bullets.size() == 1, "exactly one projectile node was spawned",
+	_check(bullets.size() == 1, "создан ровно один узел снаряда",
 		"(got %d)" % bullets.size())
 	if bullets.size() == 1:
 		var bullet := bullets[0]
 		_check(is_equal_approx(bullet.speed, _EXPECTED_PROJECTILE_SPEED),
-			"the projectile takes its speed from the weapon data",
-			"(got %.1f m/s)" % bullet.speed)
+			"снаряд берёт скорость из данных оружия",
+			"(got %.1f м/с)" % bullet.speed)
 		_check(is_equal_approx(bullet.damage, _EXPECTED_DAMAGE),
-			"the projectile takes its damage from the weapon data",
+			"снаряд берёт урон из данных оружия",
 			"(got %.1f)" % bullet.damage)
 		_check(is_equal_approx(bullet.lifetime, _EXPECTED_LIFETIME),
-			"the projectile takes its lifetime from the weapon data",
-			"(got %.1f s)" % bullet.lifetime)
+			"снаряд берёт время жизни из данных оружия",
+			"(got %.1f с)" % bullet.lifetime)
 		var start: Vector3 = bullet.global_position
 		await _await_until(func() -> bool: return bullet.global_position.distance_to(start) > 0.5, 5.0)
 		var moved: Vector3 = bullet.global_position - start
-		# A projectile that was added to the tree but never launched would sit
-		# still: Projectile._ready() switches its own processing off and only
-		# launch() switches it back on.
 		_check(moved.length() > 0.5,
-			"the projectile is flying, so launch() was called on a node already in the tree",
-			"(moved %.3f m)" % moved.length())
+			"снаряд находится в полёте: launch() вызван на узле в дереве сцены",
+			"(пролетел %.3f м)" % moved.length())
 		_check(moved.normalized().dot(-aim.global_transform.basis.z) > 0.99,
-			"it leaves along the fire source's forward axis",
-			"(%.3f m along %.3f m forward)" % [
+			"снаряд вылетает вдоль оси направления источника прицеливания",
+			"(%.3f м вдоль %.3f м направления)" % [
 				moved.length(), moved.normalized().dot(-aim.global_transform.basis.z)])
 	world.free()
 
 
-## The same shot with a fire source turned 90 degrees. If the direction came
-## from a hardcoded world axis, this shot would fly off into the wall and the
-## assertions above would still pass.
+## Выстрел с источником прицеливания, повёрнутым на 90 градусов.
 func _test_shot_follows_fire_source() -> void:
-	print("-- direction: the shot follows the fire source, not a world axis")
+	print("-- направление: выстрел следует за источником прицеливания, а не за мировой осью")
 	var world := _new_world()
-	# -90 degrees of yaw turns the forward axis from -Z into +X.
+	# -90 градусов рыскания разворачивает ось вперёд из -Z в +X.
 	var aim := _new_aim_source(world, -PI / 2.0)
 	var pistol := await _new_pistol(world, _data, aim)
-	_check(pistol.try_fire(), "the shot was fired")
+	_check(pistol.try_fire(), "выстрел произведён")
 
 	var bullets := _live_projectiles(aim)
-	_check(bullets.size() == 1, "one projectile was spawned", "(got %d)" % bullets.size())
+	_check(bullets.size() == 1, "создан один снаряд", "(got %d)" % bullets.size())
 	if bullets.size() == 1:
 		var bullet := bullets[0]
 		var start: Vector3 = bullet.global_position
 		await _await_until(func() -> bool: return bullet.global_position.distance_to(start) > 0.5, 5.0)
 		var moved: Vector3 = bullet.global_position - start
-		print("    travelled %s" % moved)
+		print("    пролетел %s" % moved)
 		_check(moved.x > 0.5,
-			"the shot left along the turned fire source, not along -Z",
-			"(dx=%.3f m)" % moved.x)
+			"выстрел направлен вдоль повёрнутого источника, а не по оси -Z",
+			"(dx=%.3f м)" % moved.x)
 		_check(absf(moved.z) < 0.05,
-			"and left no trace along the world Z axis it was not aimed at",
-			"(dz=%.3f m)" % moved.z)
+			"и не имеет смещения по мировой оси Z",
+			"(dz=%.3f м)" % moved.z)
 	world.free()
 
 
-## A shot must keep going where it was sent, whatever the aim source does
-## afterwards. The player's camera is attached to a character who turns and
-## walks every frame, and a projectile that stays a child of that camera has
-## its world transform rewritten by the parent's every tick -- so a 45 degree
-## yaw after the shot drags the bullet sideways by metres while it is in
-## flight, and the bullet the player sees is not the bullet that hits.
-##
-## The aim source here hangs under a pivot that the scenario turns and moves
-## after the shot, which is the player's own situation with one layer of
-## indirection. The projectile is still parented to the aim source (the
-## lifecycle parent is what free() and the projectile lists read), so this is
-## about the transform, never about the parenting.
+## Снаряд обязан сохранять траекторию выстрела независимо от движения источника прицеливания.
 func _test_shot_keeps_its_line_when_the_aim_source_moves() -> void:
-	print("-- trajectory: the shot keeps its line when the aim source's parent moves")
+	print("-- траектория: снаряд сохраняет линию при движении родителя источника прицеливания")
 	var world := _new_world()
 	var pivot := _new_aim_under_pivot(world)
 	var aim := pivot.get_node("AimSource") as Node3D
@@ -603,18 +504,16 @@ func _test_shot_keeps_its_line_when_the_aim_source_moves() -> void:
 	Input.action_press("fire")
 	var spawned := await _await_until(func() -> bool: return _live_projectiles(aim).size() > 0, 5.0)
 	Input.action_release("fire")
-	_check(spawned, "the shot was fired through the real input path",
-		"(got %d projectiles)" % _live_projectiles(aim).size())
+	_check(spawned, "выстрел произведён через реальный ввод",
+		"(получено %d снарядов)" % _live_projectiles(aim).size())
 	if not spawned:
 		world.free()
 		return
 
 	var bullet := _live_projectiles(aim)[0]
 	_check(bullet.get_parent() == aim,
-		"the projectile is still parented to the aim source: lifecycle did not change")
+		"снаряд остаётся дочерним узлом источника прицеливания: жизненный цикл не изменился")
 	var start: Vector3 = bullet.global_position
-	# The line the shot is supposed to keep. Read once, before the world moves
-	# under it -- that is what "goes where it was aimed" means.
 	var line := -aim.global_transform.basis.z
 
 	pivot.rotation.y = deg_to_rad(45.0)
@@ -627,123 +526,85 @@ func _test_shot_keeps_its_line_when_the_aim_source_moves() -> void:
 		if not is_instance_valid(bullet):
 			break
 		var offset: Vector3 = bullet.global_position - start
-		# Distance from the line, not from the origin: the shot is SUPPOSED to
-		# travel along `line`, so only the sideways component is drift.
 		worst = maxf(worst, (offset - line * offset.dot(line)).length())
 		travelled = maxf(travelled, offset.dot(line))
-	print("    worst sideways drift %.4f m, forward travel %.3f m over %d physics ticks" % [
+	print("    худшее боковое отклонение %.4f м, путь вперёд %.3f м за %d тиков физики" % [
 		worst, travelled, _TRAJECTORY_TICKS])
-	# Precondition, and it is load-bearing. Drift of zero is what a CORRECT shot
-	# looks like -- and also what a projectile that never moved looks like: the
-	# loop would sample one position forever and pass the tolerance below for
-	# the wrong reason. So the flight is proved first, along the line the bullet
-	# is supposed to follow. Half a second at 70 m/s is ~35 m; the threshold is
-	# 2.0 m, far below that and far above the sub-millimetre distance a frozen
-	# bullet accumulates.
 	_check(travelled > _TRAJECTORY_MIN_TRAVEL,
-		"precondition: the projectile really flew, so a drift of zero means a straight shot",
-		"(travelled %.3f m along the line, want > %.1f m)" % [travelled, _TRAJECTORY_MIN_TRAVEL])
+		"предусловие: снаряд реально летит (нулевое отклонение означает прямой выстрел)",
+		"(пройдено %.3f м вдоль линии, ожидается > %.1f м)" % [travelled, _TRAJECTORY_MIN_TRAVEL])
 	_check(worst <= _TRAJECTORY_DRIFT_TOLERANCE,
-		"the shot flew straight: moving the aim source's parent did not bend it",
-		"(worst sideways drift %.4f m, tolerance %.3f m)" % [worst, _TRAJECTORY_DRIFT_TOLERANCE])
-	_check(is_instance_valid(bullet), "and the projectile was still alive at the end of the flight")
+		"снаряд летит прямо: поворот родителя источника прицеливания не искривляет траекторию",
+		"(худшее боковое отклонение %.4f м, допуск %.3f м)" % [worst, _TRAJECTORY_DRIFT_TOLERANCE])
+	_check(is_instance_valid(bullet), "снаряд всё ещё существует в конце полёта")
 	world.free()
 
 
-## Where a shot STARTS and where it is AIMED are two different questions. The
-## design pins the second one to the camera (a pistol held to the side is
-## offset from the eye on purpose, player.tscn), but the first one is the
-## barrel: a bullet that leaves the camera is visibly fired out of the
-## player's head, and the two points are a hand's width apart.
-##
-## The pistol here is the shipped pistol.tscn, instantiated rather than
-## rebuilt in code, so this is also the wiring check: a scene without a Muzzle
-## marker falls back to the camera, and the fallback is asserted below rather
-## than left to the log.
+## Выстрел начинается из дула оружия (Muzzle), но прицеливается через камеру игрока.
 func _test_shot_starts_at_the_barrel() -> void:
-	print("-- start point: the shot leaves the barrel, aimed by the camera")
+	print("-- начальная точка: выстрел вылетает из дула, прицеливаясь по камере")
 	var packed: PackedScene = load(_PISTOL_SCENE_PATH)
-	_check(packed != null, "pistol.tscn is loadable", "(%s)" % _PISTOL_SCENE_PATH)
+	_check(packed != null, "pistol.tscn загружается", "(%s)" % _PISTOL_SCENE_PATH)
 	if packed == null:
 		return
 	var world := _new_world()
 	var eye := _new_eye(world)
-	# fire_rate_source left empty on purpose, exactly as pistol.tscn leaves it:
-	# the pistol must find the camera the way it does in the game.
 	var pistol := await _new_pistol_from_scene(world, packed, _data)
 
 	var barrel := pistol.get_node_or_null("Muzzle") as Node3D
 	_check(barrel != null,
-		"pistol.tscn carries a Muzzle marker: the barrel is a place, not a guess")
+		"pistol.tscn содержит маркер Muzzle: дуло задано в сцене, а не угадывается")
 	_check(barrel != null and barrel.global_position.z < -0.1,
-		"and it sits in front of the pistol, not inside the grip",
-		"(got %s)" % ("no Muzzle" if barrel == null else str(barrel.global_position)))
+		"дуло расположено впереди пистолета, а не внутри рукояти",
+		"(got %s)" % ("нет Muzzle" if barrel == null else str(barrel.global_position)))
 
 	var log := _watch(pistol)
-	_check(pistol.try_fire(), "the shot was fired")
-	_check(log.fired == 1, "and it announced exactly one shot", "(got %d)" % log.fired)
+	_check(pistol.try_fire(), "выстрел произведён")
+	_check(log.fired == 1, "сигнал fired испущен ровно один раз", "(got %d)" % log.fired)
 	var bullets := _live_projectiles(eye)
-	_check(bullets.size() == 1, "one projectile was spawned under the camera",
+	_check(bullets.size() == 1, "один снаряд создан под камерой",
 		"(got %d)" % bullets.size())
 	if bullets.size() == 1 and barrel != null:
 		var bullet := bullets[0]
 		_check(bullet.global_position.distance_to(barrel.global_position) < 0.001,
-			"the shot starts at the barrel, not at the camera",
-			"(bullet at %s, barrel at %s, eye at %s)" % [
+			"выстрел начинается в позиции дула, а не в позиции камеры",
+			"(снаряд в %s, дуло в %s, глаз в %s)" % [
 				str(bullet.global_position), str(barrel.global_position), str(eye.global_position)])
 		_check(bullet.global_position.distance_to(eye.global_position) > 0.1,
-			"and visibly not out of the eye the player is looking through",
-			"(%.3f m from the eye)" % bullet.global_position.distance_to(eye.global_position))
+			"выстрел визуально происходит не из глаза игрока",
+			"(%.3f м от глаза)" % bullet.global_position.distance_to(eye.global_position))
 		var start: Vector3 = bullet.global_position
 		await _await_until(func() -> bool: return bullet.global_position.distance_to(start) > 0.5, 5.0)
 		var moved: Vector3 = bullet.global_position - start
 		_check(moved.normalized().dot(-eye.global_transform.basis.z) > 0.99,
-			"but it is still aimed by the camera, not by the barrel",
-			"(%.3f m along %.3f m of the camera's forward axis)" % [
+			"но снаряд прицелен по камере, а не по оси дула",
+			"(%.3f м вдоль %.3f м оси направления камеры)" % [
 				moved.length(), moved.normalized().dot(-eye.global_transform.basis.z)])
 	world.free()
 
-	# The fallback chain is part of the contract, not an accident: a harness or
-	# a scene built without a barrel marker still has to shoot from somewhere.
-	# It is asserted here so a future "no barrel in this scene" cannot turn into
-	# a bullet fired out of the player's skull with a clean test log.
+	# Проверка fallback: пистолет без маркера дула всё равно стреляет из позиции камеры
 	var bare_world := _new_world()
 	var bare_eye := _new_eye(bare_world)
 	var bare := await _new_pistol(bare_world, _data, null)
 	_check(bare.get_node_or_null("Muzzle") == null,
-		"precondition: a pistol built without a barrel marker really has none")
-	_check(bare.try_fire(), "a pistol without a barrel marker still fires")
+		"предусловие: пистолет без маркера дула действительно его не имеет")
+	_check(bare.try_fire(), "пистолет без маркера дула успешно стреляет")
 	var bare_bullets := _live_projectiles(bare_eye)
-	_check(bare_bullets.size() == 1, "its projectile is parented to the camera",
+	_check(bare_bullets.size() == 1, "его снаряд прикреплён к камере",
 		"(got %d)" % bare_bullets.size())
 	if bare_bullets.size() == 1:
 		_check(bare_bullets[0].global_position.distance_to(bare_eye.global_position) < 0.001,
-			"and falls back to firing from the camera rather than refusing to shoot",
-			"(bullet at %s, eye at %s)" % [
+			"и откатывается к стрельбе из камеры вместо отказа от выстрела",
+			"(снаряд в %s, глаз в %s)" % [
 				str(bare_bullets[0].global_position), str(bare_eye.global_position)])
 	bare_world.free()
 
 
-## The pistol polls `Input.is_action_pressed("fire")` every frame, so the
-## button's state at the moment it enters the tree IS a command. A real player
-## gets there with the left button already down -- the window took focus with
-## the mouse captured and the button never came up -- and the pistol's cooldown
-## and magazine both start at zero, so the first frame of every level is a free
-## shot the player never asked for.
-##
-## The latch is "no shot until a release has been observed", so the shot
-## happens on the next REAL press, and holding the button afterwards keeps
-## firing at the rate limit exactly as before.
+## Кнопка огня, уже зажатая при входе пистолета в дерево сцены, не должна приводить к выстрелу.
 func _test_no_shot_while_the_button_is_down_on_entry() -> void:
-	print("-- startup: a fire button already down when the pistol enters the tree is not a shot")
-	# Pressed BEFORE the pistol exists: this is a button that was down when the
-	# level loaded, not a press the player is making now.
+	print("-- запуск: зажатая на входе кнопка огня не производит спонтанного выстрела")
 	Input.action_press("fire")
 	var world := _new_world()
-	# Built here rather than through _new_pistol() so the log is subscribed
-	# BEFORE the node enters the tree. _new_pistol() awaits frames, and a shot
-	# spent during that wait would fire a signal nobody was listening to yet --
-	# which would turn this check green for exactly the wrong reason.
 	var pistol := _PistolProbe.new()
 	pistol.name = "Pistol"
 	pistol.data = _data
@@ -756,19 +617,17 @@ func _test_no_shot_while_the_button_is_down_on_entry() -> void:
 		if pistol.is_node_ready():
 			break
 	_check(pistol.gate_mouse_mode == Input.MOUSE_MODE_CAPTURED,
-		"precondition: the input gate is open, so only the button can hold the shot back")
+		"предусловие: гейт ввода открыт, выстрел сдерживается только защёлкой кнопки")
 
-	# A full second of real frames with the button down -- longer than the 0.4 s
-	# rate limit, so a pistol that fires on level alone would spend three rounds.
 	for i in _NO_SHOT_WATCH_SECONDS * 60:
 		await process_frame
 	_check(log.fired == 0,
-		"a weapon that entered the tree with fire held does not shoot",
-		"(got %d shots, magazine %d of %d)" % [log.fired, pistol.current_mag(), _EXPECTED_MAGAZINE])
+		"оружие, вошедшее в дерево с зажатой кнопкой, не производит выстрелов",
+		"(выстрелов %d, магазин %d из %d)" % [log.fired, pistol.current_mag(), _EXPECTED_MAGAZINE])
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
-		"and it kept every round", "(got %d)" % pistol.current_mag())
+		"все патроны в магазине сохранены", "(got %d)" % pistol.current_mag())
 
-	# The player's answer to "nothing happened": let go and press again.
+	# Реакция игрока: отпустить и нажать снова
 	Input.action_release("fire")
 	await process_frame
 	await process_frame
@@ -776,67 +635,52 @@ func _test_no_shot_while_the_button_is_down_on_entry() -> void:
 	var answered := await _await_until(func() -> bool: return log.fired > 0, 2.0)
 	Input.action_release("fire")
 	await process_frame
-	_check(answered, "and it does shoot on the next real press",
-		"(got %d shots)" % log.fired)
-	_check(log.fired == 1, "exactly one shot, not a burst that undoes the latch",
-		"(got %d shots)" % log.fired)
+	_check(answered, "выстрел происходит при следующем реальном нажатии",
+		"(got %d выстрелов)" % log.fired)
+	_check(log.fired == 1, "произведён ровно один выстрел, без очереди",
+		"(got %d выстрелов)" % log.fired)
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"costing exactly one round", "(got %d)" % pistol.current_mag())
+		"израсходован ровно один патрон", "(got %d)" % pistol.current_mag())
 	world.free()
 
 
-## A full magazine's worth of rounds at the design's rate, then the attempt past
-## the last one: refused, with the magazine untouched. The pistol does NOT reload
-## itself: an empty magazine stays empty and quiet, and only the reload action
-## (physical R) starts the reload -- through the same input gate as fire. The
-## held fire button produces nothing for the whole reload, which is the case the
-## plan's review section calls out: an empty magazine and a fire press in the
-## same frame must neither shoot nor restart the reload.
+## Полный магазин расходуется до нуля, затем выстрел блокируется.
+## Перезарядка не начинается автоматически: только по клавише R через гейт ввода.
 func _test_empty_magazine_and_manual_reload() -> void:
-	print("-- full magazine, the empty magazine, and the reload the player asks for with R")
+	print("-- полный магазин, пустой магазин и ручная перезарядка по R")
 	var world := _new_world()
 	var aim := _new_aim_source(world)
 	var pistol := await _new_pistol(world, _data, aim)
 	var log := _watch(pistol)
 
-	# The fire action is held from the first frame, so the whole magazine is spent
-	# on the real input path rather than by calling try_fire() behind the
-	# pistol's back. The release before it is the harness's half of the
-	# arming latch (see _settle_fire_released): the pistol has to see the
-	# button up before it will read a press as one.
 	await _settle_fire_released()
 	Input.action_press("fire")
 	var emptied := await _await_until(func() -> bool: return log.fired >= _EXPECTED_MAGAZINE, 20.0)
-	_check(emptied, "holding fire empties the magazine in %d rounds" % _EXPECTED_MAGAZINE,
+	_check(emptied, "удержание огня опустошает магазин за %d выстрелов" % _EXPECTED_MAGAZINE,
 		"(got %d)" % log.fired)
 
-	# Same frame as the last round: the cooldown is running and the magazine is
-	# empty. can_fire() does not consult the cooldown, so a refusal here is the
-	# magazine's doing.
-	_check(pistol.current_mag() == 0, "the magazine is empty",
+	_check(pistol.current_mag() == 0, "магазин пуст",
 		"(got %d)" % pistol.current_mag())
-	_check(not pistol.can_fire(), "can_fire() is false on an empty magazine")
-	_check(not pistol.try_fire(), "the try_fire() past the last round is refused")
-	_check(pistol.current_mag() == 0, "the refused shot left the magazine at 0",
+	_check(not pistol.can_fire(), "can_fire() возвращает false при пустом магазине")
+	_check(not pistol.try_fire(), "try_fire() отклоняется при пустом магазине")
+	_check(pistol.current_mag() == 0, "отклонённый выстрел оставляет магазин на 0",
 		"(got %d)" % pistol.current_mag())
 	_check(log.fired == _EXPECTED_MAGAZINE,
-		"no round past the last one left the magazine", "(got %d signals)" % log.fired)
+		"лишних выстрелов сверх ёмкости магазина не произошло", "(got %d signals)" % log.fired)
 
-	# The new contract: no automatic reload. The magazine is empty and the fire
-	# button is still held; the pistol is watched for longer than a full reload
-	# would have taken, and it has to stay empty and silent.
+	# Отсутствие автоматической перезарядки: магазин пуст, кнопка отпущена
 	Input.action_release("fire")
-	var quiet_until := _now_ms() + int(_EXPECTED_RELOAD_TIME * 1.5 * 1000.0)
+	var quiet_until := _now_ms() + 300
 	while _now_ms() < quiet_until:
 		await process_frame
 	_check(log.reload_started == 0,
-		"an empty magazine does NOT start a reload on its own",
+		"пустой магазин НЕ запускает перезарядку автоматически",
 		"(got %d reloads)" % log.reload_started)
-	_check(pistol.is_reloading() == false, "and the pistol is not reloading by itself")
-	_check(pistol.current_mag() == 0, "the magazine is still empty",
+	_check(pistol.is_reloading() == false, "пистолет самостоятельно не перезаряжается")
+	_check(pistol.current_mag() == 0, "магазин всё ещё пуст",
 		"(got %d)" % pistol.current_mag())
 
-	# The gate: with the cursor free R is not play input and must not reload.
+	# Гейт ввода: при свободном курсоре R блокируется
 	pistol.gate_mouse_mode = Input.MOUSE_MODE_VISIBLE
 	Input.parse_input_event(_reload_key_event(true))
 	Input.flush_buffered_events()
@@ -845,72 +689,62 @@ func _test_empty_magazine_and_manual_reload() -> void:
 	Input.flush_buffered_events()
 	await physics_frame
 	_check(log.reload_started == 0,
-		"R with a free cursor does not start a reload",
+		"нажатие R при свободном курсоре не начинает перезарядку",
 		"(got %d reloads)" % log.reload_started)
-	_check(not pistol.is_reloading(), "and leaves the pistol idle, not reloading")
+	_check(not pistol.is_reloading(), "пистолет остаётся в покое, а не в перезарядке")
 
-	# Capturing the cursor is the only thing that has to change.
+	# Захват курсора: перезарядка разрешена
 	pistol.gate_mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Input.parse_input_event(_reload_key_event(true))
 	Input.flush_buffered_events()
 	var started := await _await_until(func() -> bool: return log.reload_started > 0, 5.0)
 	Input.parse_input_event(_reload_key_event(false))
 	Input.flush_buffered_events()
-	_check(started, "pressing reload starts the reload")
-	_check(pistol.is_reloading(), "the pistol reports itself reloading")
-	_check(log.reload_started == 1, "exactly one reload was started",
+	_check(started, "нажатие R при захваченном курсоре начинает перезарядку")
+	_check(pistol.is_reloading(), "пистолет сообщает о состоянии перезарядки")
+	_check(log.reload_started == 1, "сигнал reload_started испущен ровно один раз",
 		"(got %d)" % log.reload_started)
 
-	# The fire button is held again through the reload. Nothing may come out
-	# until the magazine is full again.
+	# Зажатая кнопка огня во время перезарядки не должна тратить патроны
 	await _settle_fire_released()
 	Input.action_press("fire")
 	var leaked := await _await_until(func() -> bool: return log.fired > _EXPECTED_MAGAZINE, 0.4)
-	_check(not leaked, "a held fire button spends no rounds while the magazine is empty",
+	_check(not leaked, "зажатый огонь не производит выстрелов при пустом магазине",
 		"(got %d)" % log.fired)
 
-	# Released before the reload can end, on purpose: a button still held at the
-	# moment the magazine is full fires again in that very frame, which is
-	# correct weapon behaviour and is pinned on purpose further down. Leaving it
-	# held here would measure the refill and the next shot in one observation.
 	Input.action_release("fire")
 	var finished := await _await_until(func() -> bool: return log.reload_finished > 0)
-	_check(finished, "the reload finished")
+	_check(finished, "перезарядка завершилась")
 	if finished:
 		var elapsed := log.reload_duration()
-		print("    reload took %.3f s" % elapsed)
+		print("    перезарядка заняла %.3f с" % elapsed)
 		_check(elapsed >= _EXPECTED_RELOAD_TIME - _TIMER_EPSILON
 				and elapsed <= _EXPECTED_RELOAD_TIME + _TIMER_TOLERANCE,
-			"the reload took about %.1f s" % _EXPECTED_RELOAD_TIME,
-			"(got %.3f s, tol +%.2f s)" % [elapsed, _TIMER_TOLERANCE])
+			"перезарядка заняла около %.1f с" % _EXPECTED_RELOAD_TIME,
+			"(got %.3f с, tol +%.2f с)" % [elapsed, _TIMER_TOLERANCE])
 		_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
-			"the magazine is full again", "(got %d)" % pistol.current_mag())
-		_check(not pistol.is_reloading(), "the pistol is no longer reloading")
-		_check(log.reload_finished == 1, "reload_finished arrived exactly once",
+			"магазин снова полон", "(got %d)" % pistol.current_mag())
+		_check(not pistol.is_reloading(), "пистолет больше не находится в перезарядке")
+		_check(log.reload_finished == 1, "сигнал reload_finished испущен ровно один раз",
 			"(got %d)" % log.reload_finished)
 		_check(log.last_magazine() == Vector2i(_EXPECTED_MAGAZINE, _EXPECTED_MAGAZINE),
-			"magazine_changed announced the refilled magazine",
+			"magazine_changed сообщил о полном магазине",
 			"(got %s)" % str(log.magazine))
-		_check(pistol.can_fire(), "the pistol can shoot again after the reload")
+		_check(pistol.can_fire(), "после перезарядки пистолет снова готов стрелять")
 
-		# And it really can: a press now goes through at once, so the reload left
-		# behind neither a stuck reloading flag nor a leftover cooldown.
 		Input.action_press("fire")
 		var resumed := await _await_until(func() -> bool: return log.fired > _EXPECTED_MAGAZINE, 2.0)
 		Input.action_release("fire")
-		_check(resumed, "a press right after the reload fires at once: no stuck cooldown",
+		_check(resumed, "нажатие сразу после перезарядки производит выстрел без задержек",
 			"(got %d shots)" % log.fired)
 		_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-			"and that press cost exactly one round", "(got %d)" % pistol.current_mag())
+			"этот выстрел израсходовал ровно один патрон", "(got %d)" % pistol.current_mag())
 	world.free()
 
 
-## The reload has to be a wall, not a suggestion: a magazine that still has rounds
-## in it must not hand them out while the pistol is reloading, and the reload
-## must not be restartable. The second half matters because a restart resets the
-## timer, and a player who can reset it can postpone the reload forever.
+## Перезарядка блокирует стрельбу даже из частично заполненного магазина и не может быть перезапущена повторно.
 func _test_reload_blocks_firing_and_cannot_be_restarted() -> void:
-	print("-- reloading: no rounds from a partly full magazine, and no restart")
+	print("-- перезарядка: отсутствие выстрелов из непустого магазина и невозможность сброса таймера")
 	var world := _new_world()
 	var aim := _new_aim_source(world)
 	var pistol := await _new_pistol(world, _data, aim)
@@ -918,85 +752,70 @@ func _test_reload_blocks_firing_and_cannot_be_restarted() -> void:
 
 	pistol.try_fire()
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"precondition: a partly spent magazine is left", "(got %d)" % pistol.current_mag())
-	_check(pistol.start_reload(), "a spent magazine accepts a reload")
-	_check(pistol.is_reloading(), "the pistol reports itself reloading")
-	_check(log.reload_started == 1, "reload_started arrived once", "(got %d)" % log.reload_started)
+		"предусловие: в магазине остался неполный боезапас", "(got %d)" % pistol.current_mag())
+	_check(pistol.start_reload(), "неполный магазин принимает команду перезарядки")
+	_check(pistol.is_reloading(), "пистолет сообщает о состоянии перезарядки")
+	_check(log.reload_started == 1, "сигнал reload_started испущен один раз", "(got %d)" % log.reload_started)
 
-	# The magazine still has rounds in it and the rate limit expires well inside a
-	# 1.2 s reload, so without the is_reloading() rule in can_fire() this window
-	# hands the player a round one interval in -- before the restart attempt
-	# below, so the two defects cannot mask each other. The release first is the
-	# harness's half of the arming latch: this pistol was created with the
-	# button already up and has to be seen holding it that way.
 	await _settle_fire_released()
 	Input.action_press("fire")
 	var halfway := await _await_until(func() -> bool:
 		return _now_ms() - log.reload_started_at_ms >= 600, _EXPECTED_RELOAD_TIME + 1.0)
-	_check(halfway, "precondition: half the reload went by with the button still held")
+	_check(halfway, "предусловие: половина времени перезарядки прошла с зажатой кнопкой")
 	_check(log.fired == 1,
-		"a held fire button spends no rounds while reloading, even with rounds left",
-		"(got %d shots, the rate limit expired %.1f s into the reload)" % [
+		"зажатый огонь во время перезарядки не производит выстрелов даже при наличии патронов",
+		"(выстрелов %d, интервал темпа %.1f с истёк во время перезарядки)" % [
 			log.fired, _EXPECTED_INTERVAL])
 
-	# Now halfway in, ask for a second reload.
+	# Попытка повторного запуска перезарядки
 	var restart_at := _now_ms()
 	_check(not pistol.start_reload(),
-		"start_reload() refuses to restart a reload in progress")
-	_check(pistol.is_reloading(), "the refused restart did not cancel the reload either")
-	# Released here for the same reason as in the scenario above: a button held
-	# at the instant the magazine is full fires again immediately, and that shot
-	# would be counted as a round lost to the reload.
+		"start_reload() отклоняет повторный запуск уже идущей перезарядки")
+	_check(pistol.is_reloading(), "отклонённый перезапуск не отменил текущую перезарядку")
 	Input.action_release("fire")
 
 	var finished := await _await_until(func() -> bool: return log.reload_finished > 0)
-	_check(finished, "the reload still finished")
+	_check(finished, "перезарядка успешно завершилась")
 	if finished:
 		var total := log.reload_duration()
 		var left_at_restart := float(log.reload_finished_at_ms - restart_at) / 1000.0
-		print("    reload took %.3f s; %.3f s of it were left after the refused restart" % [
+		print("    перезарядка заняла %.3f с; оставалось %.3f с после отклонённого перезапуска" % [
 			total, left_at_restart])
 		_check(total >= _EXPECTED_RELOAD_TIME - _TIMER_EPSILON
 				and total <= _EXPECTED_RELOAD_TIME + _TIMER_TOLERANCE,
-			"the reload still took about %.1f s in total" % _EXPECTED_RELOAD_TIME,
-			"(got %.3f s)" % total)
-		# The load-bearing half: the refused restart must not have pushed the
-		# timer back to the full reload time. 0.6 s had already gone, so a reset
-		# would leave roughly 1.2 s instead of roughly 0.6 s.
+			"суммарно перезарядка заняла около %.1f с" % _EXPECTED_RELOAD_TIME,
+			"(got %.3f с)" % total)
 		_check(left_at_restart < _EXPECTED_RELOAD_TIME - 0.2,
-			"the refused restart did not push the timer back to the full reload time",
-			"(%.3f s left after the restart attempt at 0.6 s, expected under %.2f s)" % [
+			"отклонённый перезапуск не сбросил таймер к началу",
+			"(оставалось %.3f с после попытки перезапуска на 0.6 с, ожидалось < %.2f с)" % [
 				left_at_restart, _EXPECTED_RELOAD_TIME - 0.2])
-		_check(log.reload_started == 1, "still exactly one reload was started",
+		_check(log.reload_started == 1, "по-прежнему начата ровно одна перезарядка",
 			"(got %d)" % log.reload_started)
 		_check(log.fired == 1,
-			"not one round came out of the reload, held or not",
+			"во время перезарядки не вылетело ни одной пули",
 			"(got %d shots)" % log.fired)
 		_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
-			"the reload refilled the magazine", "(got %d)" % pistol.current_mag())
+			"перезарядка полностью заполнила магазин", "(got %d)" % pistol.current_mag())
 	world.free()
 
 
-## The rate limit is in seconds and comes from the weapon data, so it is
-## measured in seconds. A limit counted in frames would move with the frame
-## rate, and the shipped fire rate has to stay the shipped fire rate on a
-## 240 Hz display.
+## Ограничение темпа стрельбы задаётся в секундах и берётся из данных оружия.
 func _test_fire_rate() -> void:
-	print("-- rate limit: the interval is the data's %.1f s, counted in seconds" % _EXPECTED_INTERVAL)
+	print("-- ограничение темпа: интервал составляет %.1f с из данных" % _EXPECTED_INTERVAL)
 	var world := _new_world()
 	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 
 	_check(is_equal_approx(_data.seconds_between_shots(), _EXPECTED_INTERVAL),
-		"precondition: the shipped data asks for one shot per %.1f s" % _EXPECTED_INTERVAL,
-		"(got %.4f s)" % _data.seconds_between_shots())
+		"предусловие: данные оружия требуют один выстрел каждые %.1f с" % _EXPECTED_INTERVAL,
+		"(got %.4f с)" % _data.seconds_between_shots())
 	var start := _now_ms()
-	_check(pistol.try_fire(), "the first shot is allowed")
+	_check(pistol.try_fire(), "первый выстрел разрешён")
 	_check(not pistol.try_fire(),
-		"a second shot in the same frame is refused by the interval")
-	_check(log.fired == 1, "only one round left the magazine", "(got %d)" % log.fired)
+		"второй выстрел в том же кадре заблокирован ограничением темпа")
+	_check(log.fired == 1, "израсходован только один патрон", "(got %d)" % log.fired)
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"the refused second shot cost no round", "(got %d)" % pistol.current_mag())
+		"отклонённый выстрел не уменьшил патроны", "(got %d)" % pistol.current_mag())
 
 	var frames := 0
 	var second := false
@@ -1007,88 +826,84 @@ func _test_fire_rate() -> void:
 			second = true
 			break
 	var elapsed := float(_now_ms() - start) / 1000.0
-	print("    second shot after %.3f s and %d process frames" % [elapsed, frames])
-	_check(second, "the next shot is allowed once the interval has passed")
+	print("    второй выстрел через %.3f с и %d кадров процесса" % [elapsed, frames])
+	_check(second, "следующий выстрел разрешён после истечения интервала")
 	_check(elapsed >= _EXPECTED_INTERVAL - _TIMER_EPSILON,
-		"the second shot waited at least the full interval",
-		"(waited %.3f s, want >= %.2f s)" % [elapsed, _EXPECTED_INTERVAL - _TIMER_EPSILON])
+		"второй выстрел выждал не менее полного интервала",
+		"(выждано %.3f с, ожидается >= %.2f с)" % [elapsed, _EXPECTED_INTERVAL - _TIMER_EPSILON])
 	_check(elapsed <= _EXPECTED_INTERVAL + _TIMER_TOLERANCE,
-		"and did not wait much longer than the interval",
-		"(waited %.3f s, want <= %.2f s)" % [
+		"и не задержался существенно дольше интервала",
+		"(выждано %.3f с, ожидается <= %.2f с)" % [
 			elapsed, _EXPECTED_INTERVAL + _TIMER_TOLERANCE])
-	_check(log.fired == 2, "exactly two rounds left the magazine",
+	_check(log.fired == 2, "израсходовано ровно два патрона",
 		"(got %d)" % log.fired)
 	world.free()
 
 
-## The fire action must not be a way around the input gate: with the cursor
-## free the same held input has to do nothing at all, and opening the gate has
-## to be the only thing that changes.
+## Действие fire не должно обходить гейт ввода: при свободном курсоре зажатый ввод
+## не производит выстрелов, а захват курсора сразу возобновляет огонь.
 func _test_input_gate() -> void:
-	print("-- input gate: the fire action does not get around the cursor being free")
+	print("-- гейт ввода: стрельба блокируется при свободном курсоре")
 	var world := _new_world()
 	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
 	_check(pistol.get_script() == _PistolProbe,
-		"precondition: the pistol under test runs the harness probe script")
+		"предусловие: тестируемый пистолет использует тестовый зонд")
 
 	pistol.gate_mouse_mode = Input.MOUSE_MODE_VISIBLE
-	_check(not pistol.can_fire(), "can_fire() is false while the cursor is free")
-	_check(not pistol.try_fire(), "try_fire() refuses while the cursor is free")
+	_check(not pistol.can_fire(), "can_fire() возвращает false при свободном курсоре")
+	_check(not pistol.try_fire(), "try_fire() отклоняется при свободном курсоре")
 	# Released first, and seen released: with the gate shut the pistol must be
 	# refusing for the gate's reason alone, not because the arming latch never
 	# fired. That is the whole point of pinning the two rules apart.
 	await _settle_fire_released()
 	Input.action_press("fire")
 	var gated_shot := await _await_until(func() -> bool: return log.fired > 0, 1.5)
-	_check(not gated_shot, "a held fire action shoots nothing while the cursor is free",
+	_check(not gated_shot, "зажатый огонь не стреляет при свободном курсоре",
 		"(got %d)" % log.fired)
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
-		"the gated pistol kept every round", "(got %d)" % pistol.current_mag())
+		"пистолет сохранил все патроны", "(got %d)" % pistol.current_mag())
 	_check(log.magazine.is_empty(),
-		"and announced nothing to a HUD either", "(got %s)" % str(log.magazine))
+		"сигналы в интерфейс не испускались", "(got %s)" % str(log.magazine))
 	Input.action_release("fire")
 
 	pistol.gate_mouse_mode = Input.MOUSE_MODE_CAPTURED
-	_check(pistol.can_fire(), "can_fire() is true again once the cursor is captured")
+	_check(pistol.can_fire(), "can_fire() снова true после захвата курсора")
 	Input.action_press("fire")
 	var opened := await _await_until(func() -> bool: return log.fired > 0, 2.0)
-	_check(opened, "the same held input fires as soon as the gate opens",
+	_check(opened, "тот же зажатый ввод начинает стрелять сразу при открытии гейта",
 		"(got %d shots)" % log.fired)
 	# The gate opened halfway through a second interval; holding the button must
 	# not turn that into a shot.
 	var burst := await _await_until(func() -> bool: return log.fired > 1, 0.2)
-	_check(not burst, "holding fire still does not shoot past the rate limit",
+	_check(not burst, "удержание огня не стреляет чаще ограничения темпа",
 		"(got %d shots)" % log.fired)
 	Input.action_release("fire")
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"exactly one round was spent by the ungated press", "(got %d)" % pistol.current_mag())
+		"разблокированное нажатие израсходовало ровно один патрон", "(got %d)" % pistol.current_mag())
 	world.free()
 
 
-## Reloading a full magazine would announce a reload that ends with the magazine
-## unchanged, and it would be a player's way to start a reload while holding the
-## button down for no reason.
+## Попытка перезарядки полного магазина отклоняется без ошибок.
 func _test_full_magazine_has_nothing_to_reload() -> void:
-	print("-- full magazine: nothing to reload, and that is not a failure of the pistol")
+	print("-- полный магазин: перезарядка отклоняется за ненадобностью")
 	var world := _new_world()
 	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
-	_check(not pistol.start_reload(), "a full magazine refuses the reload")
-	_check(log.reload_started == 0, "no reload was announced",
+	_check(not pistol.start_reload(), "полный магазин отклоняет перезарядку")
+	_check(log.reload_started == 0, "перезарядка не объявлялась",
 		"(got %d)" % log.reload_started)
-	_check(not pistol.is_reloading(), "and the pistol is not reloading")
-	_check(pistol.current_mag() == _EXPECTED_MAGAZINE, "the magazine is untouched",
+	_check(not pistol.is_reloading(), "пистолет не находится в перезарядке")
+	_check(pistol.current_mag() == _EXPECTED_MAGAZINE, "магазин не изменён",
 		"(got %d)" % pistol.current_mag())
-	_check(pistol.try_fire(), "a round comes out as usual")
-	_check(pistol.start_reload(), "and now the reload is accepted")
+	_check(pistol.try_fire(), "выстрел происходит штатно")
+	_check(pistol.start_reload(), "теперь неполный магазин принимает перезарядку")
 	world.free()
 
 
-## The Phase 4 contract, asserted before anything calls it. A half-full magazine
-## that survives a trip to the lobby hands the player free rounds every time.
+## Смена сцены полностью сбрасывает оружие: магазин заполнен, перезарядка отменена.
 func _test_scene_change_reset() -> void:
-	print("-- scene change: the weapon is reset, so a lobby trip costs no rounds")
+	print("-- смена сцены: оружие сбрасывается к начальному состоянию")
 	var world := _new_world()
 	var pistol := await _new_pistol(world, _data, _new_aim_source(world))
 	var log := _watch(pistol)
@@ -1096,74 +911,71 @@ func _test_scene_change_reset() -> void:
 	pistol.try_fire()
 	pistol.start_reload()
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"precondition: the magazine is partly spent", "(got %d)" % pistol.current_mag())
-	_check(pistol.is_reloading(), "precondition: a reload is in progress")
+		"предусловие: магазин частично израсходован", "(got %d)" % pistol.current_mag())
+	_check(pistol.is_reloading(), "предусловие: идёт процесс перезарядки")
 
 	pistol.reset_for_scene_change()
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
-		"the magazine is full again after a scene change",
+		"магазин снова полон после смены сцены",
 		"(got %d)" % pistol.current_mag())
-	_check(not pistol.is_reloading(), "the reload is cancelled")
-	_check(pistol.can_fire(), "the pistol can shoot again")
+	_check(not pistol.is_reloading(), "перезарядка отменена")
+	_check(pistol.can_fire(), "пистолет снова готов к стрельбе")
 	_check(log.last_magazine() == Vector2i(_EXPECTED_MAGAZINE, _EXPECTED_MAGAZINE),
-		"the reset is announced, so a HUD is not left showing a stale count",
+		"сброс объявлен сигналом, исключая устаревшие данные в HUD",
 		"(got %s)" % str(log.magazine))
 	_check(log.reload_finished == 0,
-		"a cancelled reload never claims to have finished", "(got %d)" % log.reload_finished)
+		"отменённая перезарядка не испускает reload_finished", "(got %d)" % log.reload_finished)
 	# The rate limit is cleared too: a scene change is not a continuation of the
 	# previous one's shot.
-	_check(pistol.try_fire(), "the first shot of the new scene is not rate limited")
+	_check(pistol.try_fire(), "первый выстрел новой сцены не заблокирован кулдауном")
 	world.free()
 
 
-## A resource edited into a degenerate state must be refused, not obeyed.
+## Некорректные параметры ресурса оружия блокируют стрельбу без деления на ноль.
 func _test_invalid_data_blocks_firing() -> void:
-	print("-- degenerate data: a zero magazine size blocks firing instead of dividing by zero")
+	print("-- некорректные данные: нулевой магазин блокирует стрельбу без деления на ноль")
 	var world := _new_world()
 	var aim := _new_aim_source(world)
 
 	var stock := await _new_pistol(world, _data, aim)
 	_check(stock.can_fire(),
-		"precondition: the shipped data lets the pistol fire, so the refusals below mean something")
+		"предусловие: исходные данные позволяют стрелять, проверки ниже информативны")
 
 	var zero_mag := WeaponData.new()
 	zero_mag.magazine_size = 0
 	var pistol := await _new_pistol(world, zero_mag, aim)
 	var log := _watch(pistol)
 	_check(pistol.current_mag() == 0,
-		"a zero-capacity magazine starts empty", "(got %d)" % pistol.current_mag())
-	_check(not pistol.can_fire(), "can_fire() is false for a zero magazine size")
-	_check(not pistol.try_fire(), "try_fire() refuses to shoot with a zero magazine size")
-	_check(not pistol.start_reload(), "and there is nothing to reload either")
-	_check(log.fired == 0, "nothing fired", "(got %d)" % log.fired)
-	_check(pistol.current_mag() == 0, "and no round was invented", "(got %d)" % pistol.current_mag())
+		"магазин с нулевой ёмкостью начинается пустым", "(got %d)" % pistol.current_mag())
+	_check(not pistol.can_fire(), "can_fire() возвращает false при нулевом размере магазина")
+	_check(not pistol.try_fire(), "try_fire() отклоняется при нулевом размере магазина")
+	_check(not pistol.start_reload(), "перезаряжать также нечего")
+	_check(log.fired == 0, "выстрелов не произошло", "(got %d)" % log.fired)
+	_check(pistol.current_mag() == 0, "патронов не появилось", "(got %d)" % pistol.current_mag())
 
 	var zero_rate := WeaponData.new()
 	zero_rate.rounds_per_minute = 0.0
 	var rate_pistol := await _new_pistol(world, zero_rate, aim)
 	_check(not rate_pistol.can_fire(),
-		"a zero fire rate is refused rather than dividing by zero")
+		"нулевой темп стрельбы отклоняется без деления на ноль")
 	world.free()
 
 
-## The order inside try_fire() is load-bearing: check, then instantiate, then
-## decrement. A pistol that decremented first would eat a round for a shot that
-## never happened -- and pistol.tscn without a projectile scene, or one pointing
-## at a scene whose root cannot be launched, is exactly that situation.
+## Очередность в try_fire(): сначала создание снаряда, потом списание патрона.
 func _test_missing_projectile_scene_keeps_the_round() -> void:
-	print("-- failed instantiation: the round survives the shot that never happened")
+	print("-- сбой создания снаряда: патрон сохраняется при несостоявшемся выстреле")
 	var world := _new_world()
 	var pistol := await _new_pistol(world, _data, _new_aim_source(world), false)
 	var log := _watch(pistol)
 	_check(pistol.projectile_scene == null,
-		"precondition: this pistol has no projectile scene at all")
-	_check(pistol.can_fire(), "precondition: it is otherwise ready to shoot")
-	_check(not pistol.try_fire(), "a pistol with no projectile scene cannot shoot")
+		"предусловие: у пистолета отсутствует сцена снаряда")
+	_check(pistol.can_fire(), "предусловие: в остальном оружие готово к стрельбе")
+	_check(not pistol.try_fire(), "пистолет без сцены снаряда не может стрелять")
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE,
-		"the round is still in the magazine: instantiate first, decrement after",
-		"(got %d of %d)" % [pistol.current_mag(), _EXPECTED_MAGAZINE])
-	_check(log.fired == 0, "a shot that never happened announced nothing",
+		"патрон остался в магазине: создание снаряда предшествует списанию",
+		"(got %d из %d)" % [pistol.current_mag(), _EXPECTED_MAGAZINE])
+	_check(log.fired == 0, "несостоявшийся выстрел ничего не объявил",
 		"(got %d)" % log.fired)
-	_check(log.magazine.is_empty(), "and the magazine never changed",
+	_check(log.magazine.is_empty(), "состояние магазина не менялось",
 		"(got %s)" % str(log.magazine))
 	world.free()

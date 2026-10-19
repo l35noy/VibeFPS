@@ -1,34 +1,20 @@
 extends SceneTree
 
-## Weapon data harness for VibeFPS.
+## Проверка данных оружия (WeaponData) для VibeFPS.
 ##
-## Reads res://data/weapons/pistol.tres through load() and asks it the same
-## questions the weapon script will ask in Phase 1 Task 3: what are the
-## numbers, what does the derived fire interval come out as, and does the
-## resource consider itself usable. Nothing is instantiated as a scene node --
-## this is data, and a data check that had to build a world in order to read a
-## number would be testing the world instead.
-##
-## Every assertion below names the edit that turns it red. The negative halves
-## are asserted too, not only the green ones: seconds_between_shots() is asked
-## to follow a *changed* fire rate, and is_valid() is asked to reject each
-## degenerate value in turn. Without those, a method hardcoded to return 0.4
-## and true would sail through a check that only ever saw the good resource.
-##
-## Run: godot --headless --path . --script res://tests/weapon_data.gd
-##      .\tools\run_checks.ps1 weapon_data
+## Загружает res://data/weapons/pistol.tres через load() и валидирует его числовые
+## параметры, вычисляемый темп стрельбы и метод is_valid().
+## Не инстанцирует сцены: это проверка ресурса данных.
+## Запуск: godot --headless --path . --script res://tests/weapon_data.gd
+##         .\tools\run_checks.ps1 weapon_data
 
 const _PISTOL_PATH := "res://data/weapons/pistol.tres"
 
-## The fire interval is a division, so it is compared with a tolerance rather
-## than for exact equality.
+## Допуск сравнения интервала выстрелов (числа с плавающей точкой).
 const _EPS := 0.0001
 
-## The design fixes the pistol at 150 rounds per minute with 18 rounds in the
-## magazine. 150 rpm is one shot every 0.4 s, so a full magazine is 7.2 s of
-## continuous fire. The assertion recomputes that from the resource's own
-## fields instead of reading a hardcoded constant, so a future balance edit
-## that changes the fire rate or the magazine size alone cannot pass unnoticed.
+## Дизайн фиксирует пистолет: 150 выстрелов в минуту, 18 патронов в магазине.
+## 150 выстрелов в минуту = 1 выстрел каждые 0.4 с; полный магазин = 7.2 с непрерывной стрельбы.
 const _EXPECTED_BURST_SECONDS := 7.2
 
 var _failures: PackedStringArray = []
@@ -48,8 +34,7 @@ func _close(got: float, want: float) -> bool:
 	return absf(got - want) <= _EPS
 
 
-## Builds a throwaway WeaponData with one field overwritten, so the derived
-## methods can be asked a question the shipped resource never asks.
+## Создаёт временный WeaponData с переопределённым полем для проверки граничных условий.
 func _probe(overrides: Dictionary) -> WeaponData:
 	var probe := WeaponData.new()
 	for key in overrides:
@@ -57,21 +42,17 @@ func _probe(overrides: Dictionary) -> WeaponData:
 	return probe
 
 
-## Must come back true only when is_valid() really rejects the degenerate
-## value, which is what makes "is_valid() is true" on pistol.tres meaningful.
+## Возвращает true только если is_valid() действительно отвергает некорректное значение.
 func _is_valid_rejects(overrides: Dictionary) -> bool:
 	return not _probe(overrides).is_valid()
 
 
 func _finish() -> void:
-	print("=== RESULT: %d checks, %d failed ===" % [_checks, _failures.size()])
+	print("=== РЕЗУЛЬТАТ: %d проверок, %d провалено ===" % [_checks, _failures.size()])
 	for f in _failures:
-		print("  FAILURE: %s" % f)
+		print("  ОШИБКА: %s" % f)
 
 
-## Ends the run on a precondition the rest of the check cannot be evaluated
-## against. Without this the field assertions below would dereference a null
-## resource and the runner would report a crash instead of a named failure.
 func _bail(reason: String) -> void:
 	print("FATAL: %s" % reason)
 	_finish()
@@ -79,88 +60,73 @@ func _bail(reason: String) -> void:
 
 
 func _initialize() -> void:
-	print("=== weapon data ===")
+	print("=== Данные оружия (WeaponData) ===")
 
-	print("-- %s must load as a WeaponData" % _PISTOL_PATH)
+	print("-- %s должен загружаться как WeaponData" % _PISTOL_PATH)
 	var res: Resource = load(_PISTOL_PATH)
 	if res == null:
-		_bail("cannot load %s" % _PISTOL_PATH)
+		_bail("не удалось загрузить %s" % _PISTOL_PATH)
 		return
 	var script_res := res.get_script() as Script
-	_check(res is WeaponData, "pistol.tres is a WeaponData",
+	_check(res is WeaponData, "pistol.tres является экземпляром WeaponData",
 		"(script=%s)" % ("none" if script_res == null else script_res.resource_path))
 	var data := res as WeaponData
 	if data == null:
-		_bail("pistol.tres is not a WeaponData, the field checks below would be meaningless")
+		_bail("pistol.tres не является WeaponData, дальнейшие проверки бессмысленны")
 		return
 
-	print("-- the values the design fixes for the pistol")
-	# Each of these turns red on a single field edit in pistol.tres.
-	_check(data.display_name == "Pistol", "display_name is \"Pistol\"",
-		"(got \"%s\")" % data.display_name)
-	# pistol.tres does not set price, so this pins the script default: the
-	# starting weapon is free, every purchasable one (auto) sets an explicit
-	# price in its own .tres.
-	_check(data.price == 0, "price is 0 for the starting weapon",
-		"(got %d)" % data.price)
-	_check(data.damage == 30.0, "damage is 30.0", "(got %.4f)" % data.damage)
-	_check(data.rounds_per_minute == 150.0, "rounds_per_minute is 150.0",
-		"(got %.4f)" % data.rounds_per_minute)
-	_check(data.magazine_size == 18, "magazine_size is 18",
-		"(got %d)" % data.magazine_size)
-	_check(data.reload_time == 1.2, "reload_time is 1.2", "(got %.4f)" % data.reload_time)
-	_check(data.projectile_speed == 70.0, "projectile_speed is 70.0",
-		"(got %.4f)" % data.projectile_speed)
-	_check(data.projectile_radius == 0.08, "projectile_radius is 0.08",
-		"(got %.4f)" % data.projectile_radius)
-	_check(data.projectile_lifetime == 4.0, "projectile_lifetime is 4.0",
-		"(got %.4f)" % data.projectile_lifetime)
-	# Not written in pistol.tres, so this pins the script's own default: it is
-	# what Task 5 feeds into the projectile material, and nothing else in the
-	# project would notice a change to it.
+	print("-- значения баланса пистолета из дизайна")
+	_check(data.display_name == "Pistol", "display_name равен \"Pistol\"",
+		"(получено \"%s\")" % data.display_name)
+	_check(data.price == 0, "цена начального оружия равна 0",
+		"(получено %d)" % data.price)
+	_check(data.damage == 30.0, "урон равен 30.0", "(получено %.4f)" % data.damage)
+	_check(data.rounds_per_minute == 150.0, "rounds_per_minute равен 150.0",
+		"(получено %.4f)" % data.rounds_per_minute)
+	_check(data.magazine_size == 18, "magazine_size равен 18",
+		"(получено %d)" % data.magazine_size)
+	_check(data.reload_time == 1.2, "reload_time равен 1.2 с", "(получено %.4f)" % data.reload_time)
+	_check(data.projectile_speed == 70.0, "projectile_speed равен 70.0 м/с",
+		"(получено %.4f)" % data.projectile_speed)
+	_check(data.projectile_radius == 0.08, "projectile_radius равен 0.08 м",
+		"(получено %.4f)" % data.projectile_radius)
+	_check(data.projectile_lifetime == 4.0, "projectile_lifetime равен 4.0 с",
+		"(получено %.4f)" % data.projectile_lifetime)
 	_check(data.projectile_color == Color(0.15, 0.15, 0.15),
-		"projectile_color is the script default Color(0.15, 0.15, 0.15)",
-		"(got %s)" % data.projectile_color)
+		"projectile_color равен дефолтному Color(0.15, 0.15, 0.15)",
+		"(получено %s)" % data.projectile_color)
 
-	# PROJECT.md 9.8 makes this a game rule rather than a technical detail: a
-	# hitscan weapon would remove the dodge window the bullet travel creates.
 	_check(data.projectile_speed > 0.0 and is_finite(data.projectile_speed),
-		"projectile speed is finite and non-zero, so the bullet travels and can be dodged",
-		"(%.1f m/s; a pistol round covers 15 m in %.3f s)" % [
+		"скорость снаряда конечна и не равна нулю (баллистический снаряд, от которого можно увернуться)",
+		"(%.1f м/с; пуля проходит 15 м за %.3f с)" % [
 			data.projectile_speed, 15.0 / data.projectile_speed])
 
-	print("-- derived fire interval")
+	print("-- вычисляемый интервал стрельбы")
 	_check(_close(data.seconds_between_shots(), 0.4),
-		"seconds_between_shots() is 0.4 s at 150 rpm", "(got %.6f, tol %.4f)" % [
+		"seconds_between_shots() равен 0.4 с при 150 выстр/мин", "(получено %.6f, допуск %.4f)" % [
 			data.seconds_between_shots(), _EPS])
-	# The 0.4 above could also be satisfied by a method that always returns
-	# 0.4. Halving the fire rate must halve the interval, which a constant
-	# cannot do.
 	_check(_close(_probe({"rounds_per_minute": 60.0}).seconds_between_shots(), 1.0),
-		"seconds_between_shots() follows the fire rate, it is not a constant",
-		"(60 rpm -> %.6f s)" % _probe({"rounds_per_minute": 60.0}).seconds_between_shots())
+		"seconds_between_shots() динамически следует за скорострельностью, а не зашит константой",
+		"(60 выстр/мин -> %.6f с)" % _probe({"rounds_per_minute": 60.0}).seconds_between_shots())
 
-	print("-- is_valid() can answer false, so is_valid() == true means something")
-	_check(data.is_valid(), "pistol.tres reports itself valid")
-	# One assertion per term of is_valid()'s condition: dropping any single
-	# term from the implementation turns exactly this one red.
+	print("-- валидация данных через is_valid()")
+	_check(data.is_valid(), "pistol.tres сообщает о своей валидности (is_valid == true)")
 	_check(_is_valid_rejects({"rounds_per_minute": 0.0}),
-		"a zero fire rate is rejected")
+		"нулевая скорострельность отвергается")
 	_check(_is_valid_rejects({"magazine_size": 0}),
-		"an empty magazine capacity is rejected")
+		"нулевой размер магазина отвергается")
 	_check(_is_valid_rejects({"reload_time": 0.0}),
-		"a zero reload time is rejected")
+		"нулевое время перезарядки отвергается")
 	_check(_is_valid_rejects({"damage": 0.0}),
-		"zero damage is rejected")
+		"нулевой урон отвергается")
 	_check(_is_valid_rejects({"projectile_speed": 0.0}),
-		"a zero projectile speed is rejected")
+		"нулевая скорость снаряда отвергается")
 
-	print("-- burst length invariant")
-	# magazine_size * seconds_between_shots(): 18 rounds at one shot per 0.4 s.
+	print("-- инвариант длины непрерывной очереди")
 	var burst := float(data.magazine_size) * data.seconds_between_shots()
 	_check(_close(burst, _EXPECTED_BURST_SECONDS),
-		"a full magazine is %.1f s of continuous fire" % _EXPECTED_BURST_SECONDS,
-		"(computed %.6f from magazine_size=%d and %.6f s per shot)" % [
+		"опустошение полного магазина занимает %.1f с непрерывной стрельбы" % _EXPECTED_BURST_SECONDS,
+		"(вычислено %.6f из magazine_size=%d и %.6f с на выстрел)" % [
 			burst, data.magazine_size, data.seconds_between_shots()])
 
 	_finish()

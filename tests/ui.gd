@@ -1,17 +1,10 @@
-﻿extends SceneTree
+extends SceneTree
 
-## HUD harness for VibeFPS (Phase 3, Task 9): the on-player CanvasLayer that
-## shows the player's health, the current weapon's magazine and the score.
+## Проверка интерфейса HUD для VibeFPS (Фаза 3, Задача 9): CanvasLayer игрока,
+## отображающий здоровье, магазин текущего оружия и счёт очков.
 ##
-## The three sources are faked, so the harness pins the HUD's own behaviour --
-## formatting, signal wiring, re-binding on a weapon swap and null-safety -- and
-## does not depend on player.gd, pistol.gd or GameState internals. A separate
-## section loads the real player.tscn and checks the shipped wiring (the UI
-## child, current_weapon() and weapon_changed), which is the part a fake cannot
-## stand in for.
-##
-## Run: godot --headless --path . --script res://tests/ui.gd
-##      .\tools\run_checks.ps1 ui
+## Запуск: godot --headless --path . --script res://tests/ui.gd
+##         .\tools\run_checks.ps1 ui
 
 const _UI_SCENE := "res://ui/ui.tscn"
 const _PLAYER_SCENE := "res://entities/player/player.tscn"
@@ -29,8 +22,7 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 		print("  [FAIL] %s %s" % [label, detail])
 
 
-## Stand-in for player.gd: only the surface the HUD is allowed to read --
-## `health_changed`, `weapon_changed`, `health()` and a `max_health` property.
+## Заглушка игрока: реализует интерфейс, необходимый для HUD (health_changed, weapon_changed).
 class _FakePlayer extends Node:
 	signal health_changed(current: float, maximum: float)
 	signal weapon_changed(weapon: Node)
@@ -55,7 +47,7 @@ class _FakePlayer extends Node:
 		weapon_changed.emit(weapon)
 
 
-## Stand-in for the weapon: `magazine_changed` plus `current_mag()`.
+## Заглушка оружия: magazine_changed и current_mag().
 class _FakeWeapon extends Node:
 	signal magazine_changed(current: int, capacity: int)
 
@@ -69,7 +61,7 @@ class _FakeWeapon extends Node:
 		magazine_changed.emit(current, capacity)
 
 
-## Stand-in for GameState: `points_changed` plus the `points` field.
+## Заглушка GameState: points_changed и поле points.
 class _FakeGameState extends Node:
 	signal points_changed(points: int)
 
@@ -96,79 +88,75 @@ func _bar_max(ui: Node, node_name: String) -> float:
 
 
 func _initialize() -> void:
-	print("=== VibeFPS UI (HUD) test ===")
+	print("=== Проверка интерфейса (UI/HUD) ===")
 	await _test_scene_contract()
 	await _test_player_wiring()
 	await _test_binding()
 	await _test_weapon_changed_rebinds()
 	await _test_null_safety()
 
-	print("=== RESULT: %d checks, %d failed ===" % [_checks, _failures.size()])
+	print("=== РЕЗУЛЬТАТ: %d проверок, %d провалено ===" % [_checks, _failures.size()])
 	for f in _failures:
-		print("  FAILURE: %s" % f)
+		print("  ОШИБКА: %s" % f)
 	quit(1 if _failures.size() > 0 else 0)
 
 
-## The stable shape later tasks bind to: the scene loads, its root is a
-## CanvasLayer running ui.gd, and the four named elements exist with the right
-## types. A rename or a missing node would make every other section meaningless.
+## Проверка контракта ui.tscn: узел верхнего уровня — CanvasLayer с ui.gd,
+## четыре обязательных элемента UI существуют и имеют верные типы.
 func _test_scene_contract() -> void:
-	print("-- ui.tscn contract")
+	print("-- контракт ui.tscn")
 	var packed: PackedScene = load(_UI_SCENE)
-	_check(packed != null, "res://ui/ui.tscn loads")
+	_check(packed != null, "res://ui/ui.tscn загружается")
 	if packed == null:
 		return
 	var ui := packed.instantiate()
-	_check(ui is CanvasLayer, "the ui.tscn root is a CanvasLayer",
-		"(got %s)" % ("null" if ui == null else ui.get_class()))
+	_check(ui is CanvasLayer, "корень ui.tscn является CanvasLayer",
+		"(получено %s)" % ("null" if ui == null else ui.get_class()))
 	if ui == null:
 		return
 	root.add_child(ui)
 	await physics_frame
-	_check(ui.has_method("bind"), "ui.gd exposes bind(player, weapon, game_state)")
-	_check(ui.get_node_or_null("HealthLabel") is Label, "HealthLabel is a Label")
-	_check(ui.get_node_or_null("HealthBar") is ProgressBar, "HealthBar is a ProgressBar")
-	_check(ui.get_node_or_null("AmmoLabel") is Label, "AmmoLabel is a Label")
-	_check(ui.get_node_or_null("PointsLabel") is Label, "PointsLabel is a Label")
+	_check(ui.has_method("bind"), "ui.gd предоставляет публичный метод bind(player, weapon, game_state)")
+	_check(ui.get_node_or_null("HealthLabel") is Label, "HealthLabel является Label")
+	_check(ui.get_node_or_null("HealthBar") is ProgressBar, "HealthBar является ProgressBar")
+	_check(ui.get_node_or_null("AmmoLabel") is Label, "AmmoLabel является Label")
+	_check(ui.get_node_or_null("PointsLabel") is Label, "PointsLabel является Label")
 	ui.queue_free()
 	await physics_frame
 
 
-## The shipped player.tscn wiring: the HUD hangs off the player, the player
-## exposes current_weapon()/weapon_changed, and the HUD is filled on spawn
-## without anyone polling it.
+## Проводка сцены player.tscn: HUD висит дочерним узлом, игрок выставляет
+## current_weapon() и weapon_changed, значения HUD заполняются при спавне.
 func _test_player_wiring() -> void:
-	print("-- player.tscn wiring: the HUD rides the player and starts filled")
+	print("-- проводка player.tscn: HUD привязан к игроку и заполняется при спавне")
 	var packed: PackedScene = load(_PLAYER_SCENE)
-	_check(packed != null, "res://entities/player/player.tscn loads")
+	_check(packed != null, "res://entities/player/player.tscn загружается")
 	if packed == null:
 		return
 	var player := packed.instantiate()
 	if player == null:
-		_check(false, "player.tscn instantiates")
+		_check(false, "player.tscn инстанцируется")
 		return
-	# Connect before entering the tree, so the _ready emit is observed: the
-	# contract is "emits when ready", which an after-the-fact connect misses.
 	var seen_weapons: Array = []
 	player.weapon_changed.connect(func(weapon: Node) -> void: seen_weapons.append(weapon))
 	root.add_child(player)
 	await physics_frame
 
 	_check(player.has_method("current_weapon"),
-		"player.gd exposes current_weapon()")
+		"player.gd предоставляет метод current_weapon()")
 	_check(player.has_signal("weapon_changed"),
-		"player.gd exposes the weapon_changed signal")
+		"player.gd предоставляет сигнал weapon_changed")
 	var pistol := player.get_node_or_null("Pistol")
 	_check(player.current_weapon() == pistol,
-		"current_weapon() answers with the Pistol node",
-		"(got %s)" % ("null" if player.current_weapon() == null else player.current_weapon().name))
+		"current_weapon() возвращает узел Pistol",
+		"(получено %s)" % ("null" if player.current_weapon() == null else player.current_weapon().name))
 	_check(seen_weapons.size() >= 1 and seen_weapons[0] == pistol,
-		"weapon_changed fired once with the pistol on ready",
-		"(got %d events)" % seen_weapons.size())
+		"weapon_changed сработал один раз с узлом pistol при готовности",
+		"(получено %d событий)" % seen_weapons.size())
 
 	var hud := player.get_node_or_null("UI")
 	_check(hud != null and hud is CanvasLayer,
-		"player.tscn carries a UI CanvasLayer child")
+		"в player.tscn есть дочерний CanvasLayer с именем UI")
 	if hud != null:
 		_check(hud.has_method("bind"), "the player's UI runs ui.gd")
 		# The player emits health_changed/weapon_changed in _ready, and the HUD
@@ -184,12 +172,12 @@ func _test_player_wiring() -> void:
 	await physics_frame
 
 
-## bind() populates from the sources on the spot and then follows their signals.
+## Метод bind() заполняет данные на месте и подписывается на сигналы.
 func _test_binding() -> void:
-	print("-- binding: health, ammo and points follow their signals")
+	print("-- привязка данных (bind): здоровье, патроны и очки следуют за сигналами")
 	var packed: PackedScene = load(_UI_SCENE)
 	if packed == null:
-		_check(false, "res://ui/ui.tscn loads (binding)")
+		_check(false, "res://ui/ui.tscn загружается (binding)")
 		return
 	var ui := packed.instantiate()
 	root.add_child(ui)
@@ -209,28 +197,28 @@ func _test_binding() -> void:
 
 	ui.call("bind", player, weapon, gs)
 	_check(_label_text(ui, "HealthLabel") == "HP 75%",
-		"bind() reads the current health on the spot",
-		"(got %s)" % _label_text(ui, "HealthLabel"))
+		"bind() считывает текущее здоровье на месте",
+		"(получено %s)" % _label_text(ui, "HealthLabel"))
 	_check(_bar_value(ui, "HealthBar") == 75.0 and _bar_max(ui, "HealthBar") == 100.0,
-		"bind() sets the health bar to current/max",
-		"(got %.1f/%.1f)" % [_bar_value(ui, "HealthBar"), _bar_max(ui, "HealthBar")])
+		"bind() устанавливает полосу здоровья в current/max",
+		"(получено %.1f/%.1f)" % [_bar_value(ui, "HealthBar"), _bar_max(ui, "HealthBar")])
 	_check(_label_text(ui, "AmmoLabel") == "12",
-		"bind() reads the current magazine on the spot",
-		"(got %s)" % _label_text(ui, "AmmoLabel"))
+		"bind() считывает текущий магазин на месте",
+		"(получено %s)" % _label_text(ui, "AmmoLabel"))
 	_check(_label_text(ui, "PointsLabel") == "300",
-		"bind() reads the current points on the spot",
-		"(got %s)" % _label_text(ui, "PointsLabel"))
+		"bind() считывает текущие очки на месте",
+		"(получено %s)" % _label_text(ui, "PointsLabel"))
 
 	player.report_health(40.0, 100.0)
 	_check(_label_text(ui, "HealthLabel") == "HP 40%",
-		"health_changed moves the label")
-	_check(_bar_value(ui, "HealthBar") == 40.0, "and the bar")
+		"health_changed обновляет текстовую метку здоровья")
+	_check(_bar_value(ui, "HealthBar") == 40.0, "и полосу здоровья")
 
 	weapon.report_magazine(5, 18)
-	_check(_label_text(ui, "AmmoLabel") == "5", "magazine_changed moves the ammo counter")
+	_check(_label_text(ui, "AmmoLabel") == "5", "magazine_changed обновляет счётчик патронов")
 
 	gs.report_points(250)
-	_check(_label_text(ui, "PointsLabel") == "250", "points_changed moves the score")
+	_check(_label_text(ui, "PointsLabel") == "250", "points_changed обновляет счётчик очков")
 
 	ui.queue_free()
 	player.queue_free()
@@ -239,13 +227,12 @@ func _test_binding() -> void:
 	await physics_frame
 
 
-## The Task 10 seam: a weapon swap on the player must re-point the ammo counter,
-## leaving the old weapon unable to drive it.
+## Смена оружия на игроке перенаправляет счётчик патронов на новое оружие.
 func _test_weapon_changed_rebinds() -> void:
-	print("-- weapon_changed re-binds the ammo counter to the new weapon")
+	print("-- weapon_changed переподключает счётчик патронов к новому оружию")
 	var packed: PackedScene = load(_UI_SCENE)
 	if packed == null:
-		_check(false, "res://ui/ui.tscn loads (weapon_changed)")
+		_check(false, "res://ui/ui.tscn загружается (weapon_changed)")
 		return
 	var ui := packed.instantiate()
 	root.add_child(ui)
@@ -262,20 +249,20 @@ func _test_weapon_changed_rebinds() -> void:
 
 	ui.call("bind", player, first, null)
 	_check(_label_text(ui, "AmmoLabel") == "18",
-		"ammo starts at the bound weapon", "(got %s)" % _label_text(ui, "AmmoLabel"))
+		"патроны изначально привязаны к первому оружию", "(получено %s)" % _label_text(ui, "AmmoLabel"))
 
 	player.equip(second)
 	_check(_label_text(ui, "AmmoLabel") == "7",
-		"weapon_changed re-binds ammo to the new weapon",
-		"(got %s)" % _label_text(ui, "AmmoLabel"))
+		"weapon_changed переподключает отображение патронов к новому оружию",
+		"(получено %s)" % _label_text(ui, "AmmoLabel"))
 
 	first.report_magazine(1, 18)
 	_check(_label_text(ui, "AmmoLabel") == "7",
-		"the old weapon no longer drives the counter",
-		"(got %s)" % _label_text(ui, "AmmoLabel"))
+		"старое оружие больше не управляет счётчиком",
+		"(получено %s)" % _label_text(ui, "AmmoLabel"))
 	second.report_magazine(2, 30)
 	_check(_label_text(ui, "AmmoLabel") == "2",
-		"and the new weapon does", "(got %s)" % _label_text(ui, "AmmoLabel"))
+		"а новое оружие корректно обновляет счётчик", "(получено %s)" % _label_text(ui, "AmmoLabel"))
 
 	ui.queue_free()
 	player.queue_free()
@@ -284,38 +271,35 @@ func _test_weapon_changed_rebinds() -> void:
 	await physics_frame
 
 
-## No GameState, no weapon, no player: the HUD must stay silent and keep a
-## usable face rather than erroring on a missing source.
+## Безопасность при отсутствии источников (null safety).
 func _test_null_safety() -> void:
-	print("-- null safety: no player, no weapon, no game state")
+	print("-- безопасность при null: нет игрока, оружия или GameState")
 	var packed: PackedScene = load(_UI_SCENE)
 	if packed == null:
-		_check(false, "res://ui/ui.tscn loads (null safety)")
+		_check(false, "res://ui/ui.tscn загружается (null safety)")
 		return
 	var ui := packed.instantiate()
 	root.add_child(ui)
 	await physics_frame
 
 	ui.call("bind", null, null, null)
-	_check(true, "bind(null, null, null) returns without error")
+	_check(true, "bind(null, null, null) выполняется без ошибок")
 
-	# A plain node has none of the HUD's sources; binding it must be just as quiet.
 	var plain := Node.new()
 	root.add_child(plain)
 	ui.call("bind", plain, null, null)
-	_check(true, "binding a source-less node is silent")
+	_check(true, "привязка обычного узла без сигналов проходит без ошибок")
 
-	# Rebinding back to nulls after real sources must not leave stale wiring.
 	var weapon := _FakeWeapon.new()
 	weapon.report_magazine(9, 18)
 	root.add_child(weapon)
 	ui.call("bind", null, weapon, null)
-	_check(_label_text(ui, "AmmoLabel") == "9", "a weapon alone is enough for ammo")
+	_check(_label_text(ui, "AmmoLabel") == "9", "одного оружия достаточно для отображения патронов")
 	ui.call("bind", null, null, null)
 	weapon.report_magazine(3, 18)
 	_check(_label_text(ui, "AmmoLabel") == "9",
-		"after unbinding, the old weapon no longer drives the counter",
-		"(got %s)" % _label_text(ui, "AmmoLabel"))
+		"после отвязки старое оружие больше не меняет счётчик",
+		"(получено %s)" % _label_text(ui, "AmmoLabel"))
 
 	ui.queue_free()
 	plain.queue_free()

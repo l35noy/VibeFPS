@@ -1,18 +1,12 @@
-﻿extends SceneTree
+extends SceneTree
 
-## Inventory harness for VibeFPS (Phase 3, Task 10): the on-player inventory panel
-## (physical I, buttons + mouse) and the player's weapon swap.
+## Проверка инвентаря для VibeFPS (Фаза 3, Задача 10): панель инвентаря на игроке
+## (физическая клавиша I, кнопки + мышь) и смена экипированного оружия.
 ##
-## Two subjects, because the task joins them: pressing a button asks GameState to
-## equip and the player must actually hold the new weapon. The panel section binds
-## a real GameState to a loaded ui.tscn and reads the buttons it builds; the swap
-## section loads player.tscn and drives GameState.equip_weapon, checking the node
-## in the player's hand. Both are cheaper and more honest against the real classes
-## than against hand-built fakes, and neither touches user://save.json: the
-## SaveSystem autoload is dropped, so GameState's autosave has nowhere to write.
-##
-## Run: godot --headless --path . --script res://tests/inventory.gd
-##      .\tools\run_checks.ps1 inventory
+## Две части задачи: нажатие кнопки в UI запрашивает у GameState смену оружия,
+## а узел игрока фактически заменяет оружие в руке.
+## Запуск: godot --headless --path . --script res://tests/inventory.gd
+##         .\tools\run_checks.ps1 inventory
 
 const _UI_SCENE := "res://ui/ui.tscn"
 const _PLAYER_SCENE := "res://entities/player/player.tscn"
@@ -30,11 +24,8 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 		print("  [FAIL] %s %s" % [label, detail])
 
 
-## The engine installs the GameState/SaveSystem autoloads under /root even in
-## --script mode. Drop them first (immediate free, before the names are reused):
-## the harness then owns /root/GameState, and the real SaveSystem cannot write
-## user://save.json behind the checks. Same contract as tests/progression.gd and
-## tests/interact.gd.
+## Удаляет автозагрузки GameState/SaveSystem из /root перед тестом,
+## чтобы изолировать прогон от автосохранений на диск.
 func _drop_autoloads() -> void:
 	for autoload_name in ["GameState", "SaveSystem"]:
 		var node := root.get_node_or_null(autoload_name)
@@ -43,8 +34,7 @@ func _drop_autoloads() -> void:
 			node.free()
 
 
-## A real GameState under the name /root/GameState resolves for the panel and the
-## player. No SaveSystem exists, so every autosave is a no-op.
+## Создаёт изолированный экземпляр GameState в /root.
 func _make_game_state() -> GameState:
 	var gs := GameState.new()
 	gs.name = "GameState"
@@ -52,9 +42,7 @@ func _make_game_state() -> GameState:
 	return gs
 
 
-## A dispatchable key event for the inventory action. The physical code matches
-## project.godot (I is 73); keycode is set too, mirroring tests/interact.gd, so the
-## event is a faithful press and not a stand-in for one.
+## Событие нажатия физической клавиши I для вызова инвентаря.
 func _inventory_key_event(pressed: bool) -> InputEventKey:
 	var ev := InputEventKey.new()
 	ev.physical_keycode = KEY_I
@@ -63,8 +51,7 @@ func _inventory_key_event(pressed: bool) -> InputEventKey:
 	return ev
 
 
-## The button whose label starts with `prefix`, or null. The equipped marker is a
-## suffix, so starts_with finds the button whatever its mark state.
+## Находит кнопку, чей текст начинается с prefix.
 func _button_with(list: Node, prefix: String) -> Button:
 	for child in list.get_children():
 		if child is Button and (child as Button).text.begins_with(prefix):
@@ -80,8 +67,7 @@ func _texts(list: Node) -> PackedStringArray:
 	return out
 
 
-## display_name of the weapon held, straight from its data. null when there is no
-## weapon or no data.
+## Возвращает display_name текущего оружия игрока.
 func _held_name(weapon: Node) -> String:
 	if weapon == null:
 		return "<none>"
@@ -92,7 +78,7 @@ func _held_name(weapon: Node) -> String:
 
 
 func _initialize() -> void:
-	print("=== VibeFPS inventory test ===")
+	print("=== Проверка инвентаря (Inventory) ===")
 	_drop_autoloads()
 	await _test_panel_buttons()
 	await _test_selection_equips_and_closes()
@@ -100,16 +86,15 @@ func _initialize() -> void:
 	await _test_null_safety()
 	await _test_weapon_swap()
 
-	print("=== RESULT: %d checks, %d failed ===" % [_checks, _failures.size()])
+	print("=== РЕЗУЛЬТАТ: %d проверок, %d провалено ===" % [_checks, _failures.size()])
 	for f in _failures:
-		print("  FAILURE: %s" % f)
+		print("  ОШИБКА: %s" % f)
 	quit(1 if _failures.size() > 0 else 0)
 
 
-## One button per owned weapon, labelled with the weapon's display_name, the
-## equipped one marked. A weapon with no .tres falls back to its id.
+## По одной кнопке на каждое купленное оружие; экипированное помечено галочкой.
 func _test_panel_buttons() -> void:
-	print("-- buttons: one per owned weapon, labelled and marked")
+	print("-- кнопки: по одной на каждое оружие в собственности, с меткой экипированного")
 	var gs := _make_game_state()
 	await physics_frame
 	gs.owned_weapons = PackedStringArray(["pistol", "auto", "ghost"])
@@ -120,37 +105,37 @@ func _test_panel_buttons() -> void:
 	await physics_frame
 
 	var panel := ui.get_node_or_null("InventoryPanel")
-	_check(panel != null, "ui.tscn carries an InventoryPanel")
+	_check(panel != null, "ui.tscn содержит узел InventoryPanel")
 	if panel == null:
 		ui.queue_free()
 		gs.queue_free()
 		await physics_frame
 		return
 	_check(panel.has_method("open") and panel.has_method("close"),
-		"InventoryPanel runs inventory.gd")
+		"InventoryPanel реализует методы open() и close() скрипта inventory.gd")
 	panel.call("bind", gs)
 	panel.call("open")
 
 	var list := panel.get_node_or_null("List")
-	_check(list != null, "the panel has a List container")
+	_check(list != null, "панель содержит контейнер List")
 	if list != null:
-		_check(list.get_child_count() == 3, "one button per owned weapon",
-			"(got %d)" % list.get_child_count())
+		_check(list.get_child_count() == 3, "ровно по одной кнопке на каждое доступное оружие",
+			"(получено %d)" % list.get_child_count())
 		var texts := _texts(list)
-		_check("Pistol" in texts, "the pistol button uses WeaponData.display_name",
-			"(got %s)" % texts)
-		_check("Auto" in texts, "the auto button uses WeaponData.display_name",
-			"(got %s)" % texts)
-		_check("ghost" in texts, "a weapon with no .tres falls back to its id",
-			"(got %s)" % texts)
+		_check(_button_with(list, "Pistol") != null, "кнопка пистолета использует WeaponData.display_name",
+			"(получено %s)" % texts)
+		_check("Auto" in texts, "кнопка автомата использует WeaponData.display_name",
+			"(получено %s)" % texts)
+		_check("ghost" in texts, "оружие без .tres использует fallback на свой id",
+			"(получено %s)" % texts)
 		var pistol_button := _button_with(list, "Pistol")
 		_check(pistol_button != null and "✓" in pistol_button.text,
-			"the equipped weapon is marked",
-			"(got %s)" % (pistol_button.text if pistol_button != null else "<missing>"))
+			"экипированное оружие помечено галочкой ✓",
+			"(получено %s)" % (pistol_button.text if pistol_button != null else "<отсутствует>"))
 		var auto_button := _button_with(list, "Auto")
 		_check(auto_button != null and not ("✓" in auto_button.text),
-			"an owned but unequipped weapon is not marked",
-			"(got %s)" % (auto_button.text if auto_button != null else "<missing>"))
+			"купленное, но не экипированное оружие не имеет отметки",
+			"(получено %s)" % (auto_button.text if auto_button != null else "<отсутствует>"))
 
 	ui.queue_free()
 	gs.queue_free()
@@ -172,28 +157,27 @@ func _test_selection_equips_and_closes() -> void:
 	var list := panel.get_node_or_null("List")
 	panel.call("bind", gs)
 	panel.call("open")
-	_check(bool(panel.call("is_open")), "the panel is open before the click")
+	_check(bool(panel.call("is_open")), "панель открыта перед кликом")
 
 	var auto_button := _button_with(list, "Auto")
-	_check(auto_button != null, "the auto button exists")
+	_check(auto_button != null, "кнопка автомата существует")
 	if auto_button != null:
 		auto_button.pressed.emit()
 	_check(gs.equipped_weapon_id == "auto",
-		"the click equips the weapon through GameState",
-		"(got %s)" % gs.equipped_weapon_id)
+		"клик экипирует оружие через GameState",
+		"(получено %s)" % gs.equipped_weapon_id)
 	_check(not bool(panel.call("is_open")) and not panel.visible,
-		"and the panel closes")
+		"после выбора панель автоматически закрывается")
 
 	ui.queue_free()
 	gs.queue_free()
 	await physics_frame
 
 
-## The inventory action toggles the panel: press once opens, press again closes.
-## It runs from _unhandled_input and is deliberately not gated by InputGate, so a
-## press with the cursor in any mode reaches it.
+## Нажатие I переключает панель: первое нажатие открывает, повторное закрывает.
+## Обрабатывается в _unhandled_input без гейта InputGate (работает при любом режиме мыши).
 func _test_toggle_action() -> void:
-	print("-- input: pressing I toggles the panel")
+	print("-- ввод: нажатие клавиши I переключает видимость панели")
 	var gs := _make_game_state()
 	await physics_frame
 	gs.owned_weapons = PackedStringArray(["pistol"])
@@ -205,15 +189,14 @@ func _test_toggle_action() -> void:
 	var panel := ui.get_node_or_null("InventoryPanel")
 	panel.call("bind", gs)
 	_check(not bool(panel.call("is_open")) and not panel.visible,
-		"the panel starts hidden")
+		"панель изначально скрыта")
 
 	Input.parse_input_event(_inventory_key_event(true))
 	Input.flush_buffered_events()
 	await physics_frame
 	_check(bool(panel.call("is_open")) and panel.visible,
-		"pressing I opens the panel")
+		"нажатие I открывает панель")
 
-	# A real press returns through a release, so the second press is a new edge.
 	Input.parse_input_event(_inventory_key_event(false))
 	Input.flush_buffered_events()
 	await physics_frame
@@ -221,50 +204,50 @@ func _test_toggle_action() -> void:
 	Input.flush_buffered_events()
 	await physics_frame
 	_check(not panel.call("is_open") and not panel.visible,
-		"pressing I again closes it")
+		"повторное нажатие I закрывает панель")
 
 	ui.queue_free()
 	gs.queue_free()
 	await physics_frame
 
 
-## No GameState: the panel opens empty, and a player keeps its scene's pistol.
+## Без GameState: панель открывается пустой, игрок сохраняет дефолтный пистолет.
 func _test_null_safety() -> void:
-	print("-- null safety: no GameState")
-	root.get_node_or_null("GameState") # sanity: nothing lingers between sections
+	print("-- безопасность без GameState (null safety)")
+	root.get_node_or_null("GameState")
 
 	var ui := (load(_UI_SCENE) as PackedScene).instantiate()
 	root.add_child(ui)
 	await physics_frame
 	var panel := ui.get_node_or_null("InventoryPanel")
-	_check(panel != null, "the panel exists without a GameState")
+	_check(panel != null, "панель существует без GameState")
 	panel.call("bind", null)
 	panel.call("open")
-	_check(panel.call("is_open"), "the panel opens without a GameState")
+	_check(panel.call("is_open"), "панель открывается без GameState")
 	var list := panel.get_node_or_null("List")
 	_check(list != null and list.get_child_count() == 0,
-		"and shows no buttons",
-		"(got %d)" % (list.get_child_count() if list != null else -1))
+		"и не показывает ни одной кнопки",
+		"(получено %d)" % (list.get_child_count() if list != null else -1))
 	panel.call("close")
 
 	var player := (load(_PLAYER_SCENE) as PackedScene).instantiate()
 	root.add_child(player)
 	await physics_frame
 	var weapon: Node = player.call("current_weapon")
-	_check(weapon != null, "the player still holds a weapon without a GameState")
+	_check(weapon != null, "игрок держит оружие в руках даже при отсутствии GameState")
 	_check(_held_name(weapon) == "Pistol",
-		"and it is the scene's default pistol",
-		"(got %s)" % _held_name(weapon))
+		"и это дефолтный пистолет из сцены",
+		"(получено %s)" % _held_name(weapon))
 
 	player.queue_free()
 	ui.queue_free()
 	await physics_frame
 
 
-## GameState says which weapon is equipped; the player must hold exactly that
-## weapon, in the same hand slot, and swap back on request.
+## Игрок держит в руках ровно то оружие, которое выбрано в GameState,
+## в том же слоте руки, и переключается обратно по запросу.
 func _test_weapon_swap() -> void:
-	print("-- weapon swap: the player holds the equipped weapon")
+	print("-- смена оружия: игрок держит экипированное оружие")
 	var gs := _make_game_state()
 	await physics_frame
 	gs.owned_weapons = PackedStringArray(["pistol", "auto"])
@@ -275,36 +258,36 @@ func _test_weapon_swap() -> void:
 	await physics_frame
 
 	var start: Node = player.call("current_weapon")
-	_check(start != null, "the player holds a weapon on ready")
-	_check(_held_name(start) == "Pistol", "the pistol is held when it is equipped",
-		"(got %s)" % _held_name(start))
+	_check(start != null, "игрок держит оружие при появлении")
+	_check(_held_name(start) == "Pistol", "в руках пистолет, когда экипирован pistol",
+		"(получено %s)" % _held_name(start))
 	_check(start != null and start.scene_file_path == "res://weapons/pistol/pistol.tscn",
-		"and it comes from the pistol scene",
-		"(got %s)" % ("<none>" if start == null else start.scene_file_path))
+		"и это сцена pistol.tscn",
+		"(получено %s)" % ("<none>" if start == null else start.scene_file_path))
 	var hand_position := (start as Node3D).position if start is Node3D else Vector3.ZERO
 
 	gs.equip_weapon("auto")
 	await physics_frame
 	var swapped: Node = player.call("current_weapon")
-	_check(swapped != null, "a weapon is still held after equipping the auto")
-	_check(swapped != start, "the slot node was replaced, not the same instance")
-	_check(_held_name(swapped) == "Auto", "the auto's own data is now in hand",
-		"(got %s)" % _held_name(swapped))
+	_check(swapped != null, "после экипировки auto в руках есть оружие")
+	_check(swapped != start, "узел в слоте заменён на новый экземпляр")
+	_check(_held_name(swapped) == "Auto", "в руках теперь данные автомата",
+		"(получено %s)" % _held_name(swapped))
 	_check(swapped != null and swapped.scene_file_path == "res://weapons/auto/auto.tscn",
-		"the auto scene occupies the slot",
-		"(got %s)" % ("<none>" if swapped == null else swapped.scene_file_path))
+		"слот занимает сцена auto.tscn",
+		"(получено %s)" % ("<none>" if swapped == null else swapped.scene_file_path))
 	_check(swapped != null and swapped.name == "Pistol",
-		"the new weapon keeps the slot name so it stays findable")
+		"новое оружие сохраняет имя слота Pistol для обратной совместимости")
 	if swapped is Node3D:
 		_check((swapped as Node3D).position.is_equal_approx(hand_position),
-			"the hand transform is preserved across the swap",
-			"(got %s, expected %s)" % [(swapped as Node3D).position, hand_position])
+			"позиция в руке сохранена после смены",
+			"(получено %s, ожидалось %s)" % [(swapped as Node3D).position, hand_position])
 
 	gs.equip_weapon("pistol")
 	await physics_frame
 	var back: Node = player.call("current_weapon")
-	_check(_held_name(back) == "Pistol", "equipping the pistol again swaps back",
-		"(got %s)" % _held_name(back))
+	_check(_held_name(back) == "Pistol", "повторный выбор pistol возвращает пистолет в руки",
+		"(получено %s)" % _held_name(back))
 
 	player.queue_free()
 	gs.queue_free()

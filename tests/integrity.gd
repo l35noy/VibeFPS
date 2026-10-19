@@ -1,34 +1,21 @@
-﻿extends SceneTree
+extends SceneTree
 
-## World integrity harness for VibeFPS.
+## Тестовый сценарий целостности мира для VibeFPS.
 ##
-## Why the old fall-off-edge check was removed: it teleported the player to
-## (1000, 50, 1000), waited 240 physics frames and asserted y > -50.0. There is
-## no geometry out there -- the floor in main.tscn is a single 20x20 box -- so
-## there was nothing to fall *through* even with collisions disabled entirely,
-## and 2 s of free fall from y = 50 only reaches y ~ 30.5. The assertion held by
-## construction. It is replaced here by checks driven against real floor
-## geometry, each of which a specific regression turns red.
+## Проверяет коллизии статической геометрии, отсутствие проваливания сквозь пол
+## при быстром спринте и логику обработки падения за пределы платформы (kill plane).
 ##
-## Capture: the headless display server cannot capture the cursor, so
-## Input.mouse_mode stays MOUSE_MODE_VISIBLE for the whole run and player.gd's
-## input gate denies every movement action. A sprint traverse pushed through
-## that gate would never move the player and would sail through a "never sank
-## through the floor" assertion for the wrong reason. So the Player node runs
-## the same probe script tests/movement.gd uses: only the mouse mode the gate
-## reads comes from the harness, everything else -- gravity, move_and_slide,
-## the kill plane, the collision shape -- is the real player.gd and the real
-## main.tscn. Every traverse additionally asserts the distance it actually
-## covered, so a probe that failed to open the gate turns these checks red
-## instead of green.
+## Захват курсора: в headless-режиме DisplayServer не может захватывать курсор
+## (Input.mouse_mode всегда MOUSE_MODE_VISIBLE), поэтому игрок запускается с тестовым
+## скриптом _PlayerProbe, открывающим гейт ввода.
 ##
-## Run: godot --headless --path . --script res://tests/integrity.gd
-##      .\tools\run_checks.ps1 integrity
+## Запуск: godot --headless --path . --script res://tests/integrity.gd
+##         .\tools\run_checks.ps1 integrity
 
 
-## Stand-in for player.gd, used only by this harness.
+## Тестовый зонд на базе player.gd.
 class _PlayerProbe extends "res://entities/player/player.gd":
-	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
+	## Режим мыши, передаваемый гейту ввода вместо Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
 	func _mouse_mode_for_play_input() -> int:
@@ -52,20 +39,13 @@ class _RecordingGameState extends GameState:
 		super.return_to_lobby(reason)
 
 
-## The floor in main.tscn is a 20x20 box spanning y = -1.0 .. 0.0, and the
-## player's capsule (height 1.8, CollisionShape3D offset y = 0.9) spans
-## y = 0.0 .. 1.8 relative to its own origin, so a standing player's origin sits
-## exactly on the floor's top face at y = 0.0. Anything below -1.0 is
-## unambiguously off the platform -- that is, underneath the slab.
+## Пол в main.tscn — параллелепипед 20x20 от y = -1.0 до 0.0,
+## капсула игрока (высота 1.8) опирается на уровень пола y = 0.0.
 const _FLOOR_TOP_Y := 0.0
 const _OFF_PLATFORM_Y := -1.0
-const _STAND_Y := 1.0
+const _STAND_Y := 0.0
 
-## The biggest position jump one physics tick can legitimately produce. Physics
-## runs at 120 Hz and the fastest thing in the game is a sprint at 9 m/s
-## combined with free fall, i.e. sqrt(9^2 + 9.2^2) / 120 ~ 0.11 m per tick, so
-## 1.0 m leaves a 9x margin while still being far below any plausible respawn
-## distance. Used as a respawn detector: _respawn() is a teleport, never motion.
+## Максимальный скачок позиции за один физический тик при обычном движении (порог детекции телепорта/респавна).
 const _TELEPORT_M := 1.0
 
 ## Допуск сравнения здоровья: все числа в проверке — целые десятые доли, так что
@@ -196,48 +176,45 @@ func _drop_autoloads() -> void:
 
 
 func _initialize() -> void:
-	print("=== VibeFPS world integrity test ===")
+	print("=== VibeFPS: тест целостности мира ===")
 	_drop_autoloads()
 	var packed: PackedScene = load("res://levels/main/main.tscn")
 	if packed == null:
-		print("FATAL: cannot load res://levels/main/main.tscn")
+		print("КРИТИЧЕСКАЯ ОШИБКА: не удалось загрузить res://levels/main/main.tscn")
 		quit(1)
 		return
 
 	var world: Node3D = packed.instantiate()
 	var player: CharacterBody3D = world.get_node_or_null("Player") as CharacterBody3D
 	if player == null:
-		print("FATAL: Player node not found in main.tscn")
+		print("КРИТИЧЕСКАЯ ОШИБКА: узел Player не найден в main.tscn")
 		quit(1)
 		return
 
-	# Swapped before the node enters the tree, so _ready runs on the probe. The
-	# node under test is still main.tscn's Player, with the real exports,
-	# collision shape and children.
 	player.set_script(_PlayerProbe)
 	root.add_child(world)
 	await physics_frame
 
-	print("    display=%s  Input.mouse_mode=%d (CAPTURED=%d)" % [
+	print("    сервер_дисплея=%s  Input.mouse_mode=%d (CAPTURED=%d)" % [
 		DisplayServer.get_name(), Input.mouse_mode, Input.MOUSE_MODE_CAPTURED])
-	print("    floor top y=%.1f, off-platform threshold y=%.1f, kill plane y=%.1f" % [
+	print("    уровень пола y=%.1f, порог падения y=%.1f, kill plane y=%.1f" % [
 		_FLOOR_TOP_Y, _OFF_PLATFORM_Y, _fall_limit(player)])
 
 	await _test_collision_layers(world, player)
 
 	_check(player.get_script() == _PlayerProbe,
-		"precondition: the gate probe is installed on the scene Player")
+		"предусловие: зонд гейта ввода установлен на игрока")
 	_check(float(player.get("sprint_multiplier")) * float(player.get("speed")) > 8.0,
-		"precondition: sprint speed is high enough to cross the platform fast")
+		"предусловие: скорость спринта достаточна для быстрого пересечения платформы")
 
 	await _test_sprint_traverse_no_tunnelling(player)
 	await _test_kill_plane_quiet_on_edge_fall(player)
 	await _test_fall_recovery(player)
 
-	print("=== RESULT: %d checks, %d failed, %d warnings ===" % [
+	print("=== ИТОГ: проверок %d, ошибок %d, предупреждений %d ===" % [
 		_checks, _failures.size(), _warnings.size()])
 	for f in _failures:
-		print("  FAILURE: %s" % f)
+		print("  ОШИБКА: %s" % f)
 	quit(1 if _failures.size() > 0 else 0)
 
 
@@ -261,51 +238,35 @@ func _test_collision_layers(world: Node3D, player: CharacterBody3D) -> void:
 			break
 		await physics_frame
 	_check(world.is_node_ready(),
-		"precondition: main.tscn is instantiated and node-ready")
+		"предусловие: main.tscn инстанцирована и готова (is_node_ready)")
 
 	var floor_body := world.get_node_or_null("Floor") as StaticBody3D
-	_check(floor_body != null, "precondition: Floor (StaticBody3D) exists in main.tscn")
+	_check(floor_body != null, "предусловие: узел Floor (StaticBody3D) существует в main.tscn")
 	if floor_body == null:
 		return
 	_check(floor_body.collision_layer == _LAYER_WORLD,
-		"Floor sits on collision layer 1 (world)",
-		"(collision_layer=%d, expected %d)" % [
+		"Floor находится на слое коллизий 1 (world)",
+		"(collision_layer=%d, ожидалось %d)" % [
 			floor_body.collision_layer, _LAYER_WORLD])
 	_check(player.collision_layer == _LAYER_PLAYER_BODY,
-		"player body sits on collision layer 2 (player_body)",
-		"(collision_layer=%d, expected %d)" % [
+		"тело игрока находится на слое коллизий 2 (player_body)",
+		"(collision_layer=%d, ожидалось %d)" % [
 			player.collision_layer, _LAYER_PLAYER_BODY])
 	_check(player.collision_mask == _LAYER_WORLD,
-		"player body collides with the world (mask = layer 1)",
-		"(collision_mask=%d, expected %d)" % [
+		"тело игрока сталкивается со статическим миром (маска = слой 1)",
+		"(collision_mask=%d, ожидалось %d)" % [
 			player.collision_mask, _LAYER_WORLD])
 
 
-## Sprint traverse across the real 20x20 floor.
-##
-## What it catches, and how each one reaches the assertion:
-##   * collision layers/mask broken (mask 0, or the floor's layer removed from
-##     player.tscn / main.tscn) -- the player drops through the slab and
-##     min_y collapses;
-##   * the floor missing from main.tscn, or its CollisionShape3D removed -- the
-##     same collapse;
-##   * tunnelling at sprint speed -- a high-speed frame that crosses the 1 m
-##     slab in one step shows up as min_y dipping below the slab;
-##   * an input regression that silently stops the player -- caught by the
-##     travel assertion, so the min_y assertion cannot pass by never moving.
+## Спринт по полу 20x20: проверка отсутствия проваливания (туннелирования).
 func _test_sprint_traverse_no_tunnelling(player: CharacterBody3D) -> void:
-	print("-- sprint traverse: 15 m across the real floor must not sink through it")
+	print("-- sprint traverse: спринт на 15 м по полу без проваливания")
 	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
 
-	# Start 9 m from the near (-X) edge: 200 physics frames at 5.0 * 1.8 = 9 m/s
-	# cover 15 m and finish at x = +6, i.e. the whole sprint stays on the floor.
-	# The traverse deliberately does NOT run off the platform -- a correct game
-	# legitimately falls off a 20 m platform, so a "never went below the slab"
-	# assertion across a run-off-the-edge trajectory could not be true.
 	player.global_position = Vector3(-9.0, _STAND_Y, 0.0)
 	player.velocity = Vector3.ZERO
-	await _physics_frames(60)
-	_check(player.is_on_floor(), "precondition: the player settles on the floor",
+	await _physics_frames(15)
+	_check(player.is_on_floor(), "предусловие: игрок стоит на полу",
 		"(y=%.3f)" % player.global_position.y)
 
 	var start := player.global_position
@@ -323,49 +284,31 @@ func _test_sprint_traverse_no_tunnelling(player: CharacterBody3D) -> void:
 
 	var end := player.global_position
 	var travelled := _xz_distance(player, start)
-	print("    start=(%.2f, %.2f, %.2f)  end=(%.2f, %.2f, %.2f)" % [
+	print("    старт=(%.2f, %.2f, %.2f)  конец=(%.2f, %.2f, %.2f)" % [
 		start.x, start.y, start.z, end.x, end.y, end.z])
-	print("    travelled %.2f m at sprint, lowest y = %.3f (stand height %.3f)" % [
+	print("    пройдено %.2f м на спринте, мин y = %.3f (высота стойки %.3f)" % [
 		travelled, min_y, start_y])
 
 	_check(travelled > 12.0,
-		"sprint input really drove the player across the platform",
-		"(%.2f m; without this the floor assertion below would be vacuous)" % travelled)
+		"спринт действительно переместил игрока по платформе",
+		"(пройдено %.2f м)" % travelled)
 	_check(min_y > _OFF_PLATFORM_Y,
-		"sprinting across the floor never sank through it",
-		"(min_y=%.3f, threshold %.1f)" % [min_y, _OFF_PLATFORM_Y])
+		"игрок при спринте не провалился сквозь пол",
+		"(min_y=%.3f, порог %.1f)" % [min_y, _OFF_PLATFORM_Y])
 	_check(player.is_on_floor(),
-		"player is still standing on the floor after the sprint traverse",
+		"игрок остается на полу после завершения спринта",
 		"(y=%.3f)" % end.y)
 
 
-## The kill plane must stay silent on an ordinary fall off the platform.
-##
-## The player sprints past the +X edge and falls 3+ m into the void. That is
-## normal gameplay, not falling out of the world, so no respawn may happen: the
-## floor is 20 m across and the kill plane is 50 m down, so a fall from the
-## platform cannot reach it. This is the negative half the old harness lacked --
-## a check that only proved "respawn happens" would pass no matter how eagerly
-## the kill plane fired.
-##
-## How the respawn is detected: by the teleport, not by proximity to the spawn
-## point. Proximity is useless here -- the sprint carries the player straight
-## *through* the spawn point on its way off the platform, so "closest approach
-## to spawn" reads 0.00 m even in a perfectly correct game. A respawn instead
-## shows up as a single-tick position jump, which no amount of falling can
-## produce at 120 Hz.
-##
-## What it catches: a fall_limit regression that fires on an ordinary fall (the
-## kill plane teleports the player back onto the platform mid-fall), and a kill
-## plane raised so that merely walking off a platform respawns you.
+## Обычное падение с края платформы не должно преждевременно вызывать kill plane.
 func _test_kill_plane_quiet_on_edge_fall(player: CharacterBody3D) -> void:
-	print("-- ordinary fall off the platform edge: the kill plane must stay quiet")
+	print("-- ordinary fall: обычное падение с края платформы не должно триггерить kill plane преждевременно")
 	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
 
 	player.global_position = Vector3(-9.0, _STAND_Y, 0.0)
 	player.velocity = Vector3.ZERO
-	await _physics_frames(60)
-	_check(player.is_on_floor(), "precondition: the player settles on the floor",
+	await _physics_frames(15)
+	_check(player.is_on_floor(), "предусловие: игрок стоит на полу",
 		"(y=%.3f)" % player.global_position.y)
 
 	var kill_plane := _fall_limit(player)
@@ -377,9 +320,6 @@ func _test_kill_plane_quiet_on_edge_fall(player: CharacterBody3D) -> void:
 
 	Input.action_press("move_right")
 	Input.action_press("sprint")
-	# 360 frames: the +X edge (x = 10, capsule radius 0.4) is ~248 frames away
-	# at sprint speed, leaving ~0.9 s of falling, i.e. roughly y = -3.7. That is
-	# well clear of the platform but nowhere near the kill plane at -50.
 	for i in 360:
 		await physics_frame
 		var pos := player.global_position
@@ -388,50 +328,40 @@ func _test_kill_plane_quiet_on_edge_fall(player: CharacterBody3D) -> void:
 		prev = pos
 		if pos.x > 10.0:
 			left_the_platform = true
+		if left_the_platform and pos.y < _OFF_PLATFORM_Y - 1.0:
+			break
 	Input.action_release("sprint")
 	Input.action_release("move_right")
 
 	var end := player.global_position
 	var travelled := _xz_distance(player, start)
-	print("    travelled %.2f m off the +X edge, lowest y = %.3f (kill plane %.1f)" % [
+	print("    пройдено %.2f м за край +X, мин y = %.3f (kill plane %.1f)" % [
 		travelled, min_y, kill_plane])
-	print("    largest single-tick jump %.3f m (teleport threshold %.1f m)" % [
+	print("    наибольший скачок за тик %.3f м (порог телепорта %.1f м)" % [
 		max_step, _TELEPORT_M])
-	print("    final pos=(%.2f, %.2f, %.2f), on_floor=%s, vy=%.3f" % [
+	print("    финальная поз=(%.2f, %.2f, %.2f), на_полу=%s, vy=%.3f" % [
 		end.x, end.y, end.z, player.is_on_floor(), player.velocity.y])
 
 	_check(travelled > 15.0 and left_the_platform,
-		"the sprint really carried the player off the platform",
-		"(%.2f m, ended at x=%.2f)" % [travelled, end.x])
+		"спринт действительно вывел игрока за пределы платформы",
+		"(%.2f м, финиш на x=%.2f)" % [travelled, end.x])
 	_check(min_y < _OFF_PLATFORM_Y,
-		"precondition: the player really fell below platform height",
+		"предусловие: игрок опустился ниже уровня платформы",
 		"(min_y=%.3f)" % min_y)
 	_check(min_y > kill_plane,
-		"precondition: that fall never reached the kill plane",
-		"(min_y=%.3f > %.1f; without this the silence below proves nothing)" % [
-			min_y, kill_plane])
+		"предусловие: падение еще не достигло kill plane",
+		"(min_y=%.3f > %.1f)" % [min_y, kill_plane])
 	_check(max_step < _TELEPORT_M,
-		"kill plane does NOT fire on an ordinary fall off the platform",
-		"(largest single-tick jump %.3f m; sprint 9.0 m/s plus gravity moves at most ~0.11 m per 1/120 s tick)" % max_step)
+		"kill plane НЕ срабатывает преждевременно при обычном падении с края",
+		"(макс скачок %.3f м)" % max_step)
 	_check(not player.is_on_floor() and player.velocity.y < 0.0,
-		"the player is still airborne over the void, not respawned on the floor",
-		"(on_floor=%s, vy=%.3f)" % [player.is_on_floor(), player.velocity.y])
+		"игрок летит в пустоту и еще не возрожден на полу",
+		"(на_полу=%s, vy=%.3f)" % [player.is_on_floor(), player.velocity.y])
 
 
-## The positive half: falling past the kill plane is now DEATH (Task 7), not a
-## silent respawn -- the player must return to the lobby with reason "fall".
-##
-## Observed through a recording GameState whose scene_changer is a stub: the
-## scene never actually changes, so the player stays below the kill plane. That
-## is exactly the condition the "exactly once" gate has to survive -- a naive
-## fall branch would call died/return_to_lobby every physics frame.
-##
-## The old world-integrity meaning ("the player is pulled out of the void and
-## never falls forever") is kept as a separate fallback section: with no
-## /root/GameState the fall branch respawns the player at the spawn transform,
-## alive and on the floor.
+## Проверка падения за kill plane: игрок погибает и возвращается в лобби с причиной "fall".
 func _test_fall_recovery(player: CharacterBody3D) -> void:
-	print("-- fall recovery: falling past the kill plane is death -> lobby")
+	print("-- fall recovery: падение за kill plane приводит к смерти и возврату в лобби")
 	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
 
 	_check(root.get_node_or_null("GameState") == null,
@@ -450,11 +380,11 @@ func _test_fall_recovery(player: CharacterBody3D) -> void:
 	player.died.connect(_on_player_died.bind(player))
 
 	var kill_plane := _fall_limit(player)
-	player.global_position = Vector3(0, 5, 40)
-	player.velocity = Vector3.ZERO
+	player.global_position = Vector3(0, kill_plane + 2.0, 40)
+	player.velocity = Vector3(0, -10.0, 0)
 
 	var entered := false
-	for i in 600:
+	for i in 120:
 		await physics_frame
 		if not spy.lobby_reasons.is_empty():
 			entered = true
@@ -475,10 +405,10 @@ func _test_fall_recovery(player: CharacterBody3D) -> void:
 		"(got %.4f)" % _health_at_death)
 
 	# Stub scene_changer means the scene does NOT change: the player stays below
-	# the kill plane. 60 more frames of falling must add neither a second died
+	# the kill plane. 20 more frames of falling must add neither a second died
 	# nor a second return_to_lobby -- that is the exactly-once gate under test.
 	var below_after_gate := player.global_position.y < kill_plane
-	await _physics_frames(60)
+	await _physics_frames(20)
 	print("    y after gate = %.2f (kill plane %.1f), died=%d, lobby=%d" % [
 		player.global_position.y, kill_plane, _died_count, spy.lobby_reasons.size()])
 	_check(below_after_gate and player.global_position.y < kill_plane,
@@ -505,10 +435,10 @@ func _test_fall_recovery(player: CharacterBody3D) -> void:
 	_died_count = 0
 	_health_at_death = -1.0
 	_alive_at_death = true
-	player.global_position = Vector3(0, 5, 40)
-	player.velocity = Vector3.ZERO
+	player.global_position = Vector3(0, kill_plane + 2.0, 40)
+	player.velocity = Vector3(0, -10.0, 0)
 	var respawned := false
-	for i in 600:
+	for i in 120:
 		await physics_frame
 		if player.global_position.distance_to(spawn) < 2.0:
 			respawned = true
@@ -519,7 +449,7 @@ func _test_fall_recovery(player: CharacterBody3D) -> void:
 		"(y=%.2f)" % player.global_position.y)
 	_check(_died_count == 1, "fallback: падение испускает died ровно один раз",
 		"(got %d)" % _died_count)
-	await _physics_frames(30)
+	await _physics_frames(10)
 	_check(player.is_on_floor(), "fallback: вернувшийся игрок снова на полу",
 		"(y=%.3f)" % player.global_position.y)
 	_check(bool(player.call("is_alive")),

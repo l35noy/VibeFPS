@@ -1,33 +1,27 @@
-﻿extends SceneTree
+extends SceneTree
 
-## Auto-weapon harness for VibeFPS: the second weapon (an automatic pistol) is
-## the same pistol.gd behaviour driven by a different WeaponData, so this check
-## pins the parts that differ -- the data itself, the scene wiring, the shot
-## through the real projectile.tscn -- and the projectile visual that has to
-## follow the weapon data (radius 0.06, yellow trail) instead of the pistol's
-## defaults.
+## Тестовый сценарий автоматического оружия для VibeFPS: второе оружие (автоматический пистолет)
+## использует логику pistol.gd, управляемую отдельным WeaponData. Данный тест проверяет
+## отличающиеся компоненты: данные auto.tres, настройку сцены auto.tscn, выстрел через
+## реальный projectile.tscn и визуал снаряда (радиус 0.06, желтый след).
 ##
-## The pattern is borrowed from tests/weapon.gd: a _PistolProbe answers the
-## input gate with an explicit mouse mode (headless cannot capture the cursor),
-## the shipped auto.tscn geometry is grafted onto the probe, and waits are
-## bounded in wall-clock seconds because the weapon's rate limit is the thing
-## under test and lives in seconds, not frames.
+## Паттерн аналогичен tests/weapon.gd: _PistolProbe переопределяет режим курсора
+## для гейта ввода (в headless-режиме захват мыши недоступен), геометрия auto.tscn
+## переносится на зонд, а задержки измеряются в секундах реального времени.
 ##
-## Run: godot --headless --path . --script res://tests/auto_weapon.gd
-##      .\tools\run_checks.ps1 auto_weapon
+## Запуск: godot --headless --path . --script res://tests/auto_weapon.gd
+##         .\tools\run_checks.ps1 auto_weapon
 
-## Stand-in for pistol.gd, used only by this harness.
+## Тестовый зонд на базе pistol.gd.
 class _PistolProbe extends "res://weapons/pistol/pistol.gd":
-	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
+	## Режим мыши, передаваемый гейту ввода вместо Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
 	func _mouse_mode_for_play_input() -> int:
 		return gate_mouse_mode
 
 
-## Records what the weapon announces. fired counts shots -- one signal, one
-## round, which is what "the auto really shoots" reduces to here; the full
-## magazine bookkeeping is already pinned for pistol.gd by tests/weapon.gd.
+## Регистратор событий выстрелов оружия.
 class _Log extends RefCounted:
 	var fired: int = 0
 
@@ -37,13 +31,10 @@ class _Log extends RefCounted:
 
 const _AUTO_DATA_PATH := "res://data/weapons/auto.tres"
 const _AUTO_SCENE_PATH := "res://weapons/auto/auto.tscn"
-## The projectile scene auto.tscn points at, loaded rather than rebuilt: the
-## trail under data-driven test is the trail the shipped scene really carries.
+## Сцена снаряда, загружаемая напрямую для проверки реального следа.
 const _PROJECTILE_SCENE_PATH := "res://weapons/projectile/projectile.tscn"
 
-## The values the design fixes for the auto. Restated here so a balance edit to
-## auto.tres cannot silently turn the harness into a check of numbers it does
-## not claim to verify.
+## Ожидаемые параметры автомата согласно проектной спецификации.
 const _EXPECTED_MAGAZINE := 36
 const _EXPECTED_INTERVAL := 0.2
 const _EXPECTED_DAMAGE := 15.0
@@ -52,12 +43,11 @@ const _EXPECTED_RADIUS := 0.06
 const _EXPECTED_PRICE := 300
 const _EXPECTED_COLOR := Color(0.95, 0.75, 0.15)
 
-## Ceiling for every timed wait; a broken weapon leaves it far behind, a hung
-## one cannot turn the check into a runner timeout.
+## Предельное время ожидания в секундах.
 const _WAIT_CAP_SECONDS := 15.0
-## How far a measured timer may overshoot the nominal interval.
+## Допустимое превышение таймера над номинальным интервалом.
 const _TIMER_TOLERANCE := 0.35
-## Float slack on the short side of a timer.
+## Допустимая погрешность снизу для таймера.
 const _TIMER_EPSILON := 0.05
 
 var _failures: PackedStringArray = []
@@ -76,13 +66,13 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 
 
 func _finish() -> void:
-	print("=== RESULT: %d checks, %d failed ===" % [_checks, _failures.size()])
+	print("=== ИТОГ: проверок %d, ошибок %d ===" % [_checks, _failures.size()])
 	for f in _failures:
-		print("  FAILURE: %s" % f)
+		print("  ОШИБКА: %s" % f)
 
 
 func _bail(reason: String) -> void:
-	print("FATAL: %s" % reason)
+	print("КРИТИЧЕСКАЯ ОШИБКА: %s" % reason)
 	_finish()
 	quit(1)
 
@@ -97,7 +87,7 @@ func _close_color(a: Color, b: Color) -> bool:
 
 
 # --------------------------------------------------------------------------
-# waiting
+# ожидание
 # --------------------------------------------------------------------------
 
 func _await_until(predicate: Callable, max_seconds := _WAIT_CAP_SECONDS) -> bool:
@@ -117,8 +107,7 @@ func _now_ms() -> int:
 	return Time.get_ticks_msec()
 
 
-## Releases the fire action and lets real frames go by, so the arming latch has
-## seen the button up before the next press is read as input.
+## Отпускает действие стрельбы и ожидает пару кадров для сброса триггера ввода.
 func _settle_fire_released() -> void:
 	Input.action_release("fire")
 	await process_frame
@@ -126,7 +115,7 @@ func _settle_fire_released() -> void:
 
 
 # --------------------------------------------------------------------------
-# world builders
+# построение тестового окружения
 # --------------------------------------------------------------------------
 
 func _new_world() -> Node3D:
@@ -136,9 +125,8 @@ func _new_world() -> Node3D:
 	return world
 
 
-## A current camera in the pose a player's head hangs at, standing in for
-## player.tscn. auto.tscn leaves fire_rate_source empty on purpose, so this is
-## the node the weapon actually aims from in the game.
+## Камера на высоте головы персонажа (1.7 м). В auto.tscn поле fire_rate_source
+## пустое, поэтому прицеливание производится от камеры.
 func _new_eye(world: Node3D) -> Camera3D:
 	var eye := Camera3D.new()
 	eye.name = "Eye"
@@ -148,11 +136,7 @@ func _new_eye(world: Node3D) -> Camera3D:
 	return eye
 
 
-## The shipped auto geometry grafted onto a probe. Children are MOVED over, so
-## the Muzzle marker under test is the one auto.tscn really ships; the probe is
-## what answers the gate (see the class), and data plus projectile scene are
-## set before the node enters the tree because _ready() fills the magazine from
-## them.
+## Геометрия auto.tscn переносится на тестовый зонд _PistolProbe.
 func _new_pistol_from_scene(world: Node3D, scene: PackedScene, data: WeaponData) -> _PistolProbe:
 	var geometry := scene.instantiate()
 	var pistol := _PistolProbe.new()
@@ -169,7 +153,7 @@ func _new_pistol_from_scene(world: Node3D, scene: PackedScene, data: WeaponData)
 		await process_frame
 		if pistol.is_node_ready():
 			return pistol
-	print("FATAL: the auto never became ready")
+	print("КРИТИЧЕСКАЯ ОШИБКА: узел автомата не перешел в состояние ready")
 	return pistol
 
 
@@ -179,8 +163,7 @@ func _watch(pistol: _PistolProbe) -> _Log:
 	return log
 
 
-## The projectiles under `parent`. The weapon parents every shot to its aim
-## source (here: the camera), so this is how live bullets are found.
+## Снаряды под родительским узлом `parent`.
 func _live_projectiles(parent: Node3D) -> Array[Projectile]:
 	var out: Array[Projectile] = []
 	for child in parent.get_children():
@@ -190,18 +173,18 @@ func _live_projectiles(parent: Node3D) -> Array[Projectile]:
 
 
 # --------------------------------------------------------------------------
-# entry point
+# точка входа
 # --------------------------------------------------------------------------
 
 func _initialize() -> void:
-	print("=== VibeFPS auto weapon test ===")
+	print("=== VibeFPS: тест автоматического оружия ===")
 	_data = load(_AUTO_DATA_PATH) as WeaponData
 	if _data == null:
-		_bail("cannot load %s as a WeaponData" % _AUTO_DATA_PATH)
+		_bail("не удалось загрузить %s как WeaponData" % _AUTO_DATA_PATH)
 		return
 	_projectile_scene = load(_PROJECTILE_SCENE_PATH) as PackedScene
 	if _projectile_scene == null:
-		_bail("cannot load %s" % _PROJECTILE_SCENE_PATH)
+		_bail("не удалось загрузить %s" % _PROJECTILE_SCENE_PATH)
 		return
 
 	_test_data_contract()
@@ -214,70 +197,63 @@ func _initialize() -> void:
 
 
 # --------------------------------------------------------------------------
-# checks
+# проверки
 # --------------------------------------------------------------------------
 
-## The data the auto is defined by. A balance edit to auto.tres has to turn a
-## check red, never a scene or a hardcode.
+## Проверка ресурса параметров оружия auto.tres.
 func _test_data_contract() -> void:
-	print("-- data: auto.tres is the auto the design fixes")
-	_check(_data.is_valid(), "auto.tres reports itself valid")
-	_check(_data.display_name == "Auto", "display_name is \"Auto\"",
-		"(got \"%s\")" % _data.display_name)
+	print("-- data: auto.tres соответствует спецификации")
+	_check(_data.is_valid(), "auto.tres сообщает о валидности")
+	_check(_data.display_name == "Auto", "display_name равен \"Auto\"",
+		"(получено \"%s\")" % _data.display_name)
 	_check(_close(_data.seconds_between_shots(), _EXPECTED_INTERVAL),
-		"seconds_between_shots() is %.1f s at 300 rpm" % _EXPECTED_INTERVAL,
-		"(got %.6f)" % _data.seconds_between_shots())
+		"seconds_between_shots() равен %.1f с при 300 выстр/мин" % _EXPECTED_INTERVAL,
+		"(получено %.6f)" % _data.seconds_between_shots())
 	_check(_data.magazine_size == _EXPECTED_MAGAZINE,
-		"magazine_size is %d" % _EXPECTED_MAGAZINE,
-		"(got %d)" % _data.magazine_size)
+		"размер магазина %d" % _EXPECTED_MAGAZINE,
+		"(получено %d)" % _data.magazine_size)
 	_check(_close(_data.damage, _EXPECTED_DAMAGE),
-		"damage is %.1f" % _EXPECTED_DAMAGE, "(got %.4f)" % _data.damage)
+		"урон равен %.1f" % _EXPECTED_DAMAGE, "(получено %.4f)" % _data.damage)
 	_check(_data.price == _EXPECTED_PRICE,
-		"price is %d" % _EXPECTED_PRICE, "(got %d)" % _data.price)
+		"цена равна %d" % _EXPECTED_PRICE, "(получено %d)" % _data.price)
 	_check(_close(_data.projectile_speed, _EXPECTED_SPEED),
-		"projectile_speed is %.1f m/s" % _EXPECTED_SPEED,
-		"(got %.4f)" % _data.projectile_speed)
+		"скорость снаряда равна %.1f м/с" % _EXPECTED_SPEED,
+		"(получено %.4f)" % _data.projectile_speed)
 	_check(_close(_data.projectile_radius, _EXPECTED_RADIUS),
-		"projectile_radius is %.2f" % _EXPECTED_RADIUS,
-		"(got %.4f)" % _data.projectile_radius)
+		"радиус снаряда равен %.2f м" % _EXPECTED_RADIUS,
+		"(получено %.4f)" % _data.projectile_radius)
 	_check(_close_color(_data.projectile_color, _EXPECTED_COLOR),
-		"projectile_color is the auto's yellow", "(got %s)" % _data.projectile_color)
+		"цвет снаряда соответствует желтому цвету автомата", "(получено %s)" % _data.projectile_color)
 
 
-## The scene wiring: auto.tscn is the auto with a barrel, carrying the auto
-## data and the projectile scene, and no fire_rate_source (the weapon falls
-## back to the player's camera exactly like the pistol).
+## Проверка сцены auto.tscn и её привязок.
 func _test_scene_contract() -> void:
-	print("-- scene: auto.tscn instantiates and is wired to auto.tres")
+	print("-- scene: сцена auto.tscn загружается и привязана к auto.tres")
 	var packed: PackedScene = load(_AUTO_SCENE_PATH)
-	_check(packed != null, "auto.tscn is loadable", "(%s)" % _AUTO_SCENE_PATH)
+	_check(packed != null, "auto.tscn успешно загружена", "(%s)" % _AUTO_SCENE_PATH)
 	if packed == null:
 		return
 	var direct := packed.instantiate()
-	_check(direct != null, "auto.tscn instantiates")
+	_check(direct != null, "auto.tscn успешно создана")
 	if direct == null:
 		return
 	_check(direct.get("data") == _data,
-		"auto.tscn carries data = auto.tres")
+		"auto.tscn использует data = auto.tres")
 	_check(direct.get("projectile_scene") == _projectile_scene,
-		"auto.tscn drives res://weapons/projectile/projectile.tscn")
+		"auto.tscn управляет res://weapons/projectile/projectile.tscn")
 	_check(direct.get("fire_rate_source") == null,
-		"auto.tscn leaves fire_rate_source empty: it aims from the camera")
+		"auto.tscn оставляет fire_rate_source пустым: прицеливание от камеры")
 	var barrel := direct.get_node_or_null("Muzzle") as Node3D
-	_check(barrel != null, "auto.tscn carries a Muzzle marker")
+	_check(barrel != null, "auto.tscn содержит маркер Muzzle")
 	_check(barrel != null and barrel.position.z < -0.1,
-		"and it sits in front of the weapon, not inside the grip",
-		"(got %s)" % ("no Muzzle" if barrel == null else str(barrel.position)))
+		"и дуло расположено перед оружием, а не внутри рукояти",
+		"(получено %s)" % ("нет Muzzle" if barrel == null else str(barrel.position)))
 	direct.free()
 
 
-## One real shot through the input path with the scene grafted onto the probe:
-## the round leaves the barrel, flies at the auto's speed, and the projectile
-## instance carries the data -- speed, damage, and the visual radius/color the
-## trail is built from. The trail of the shipped projectile.tscn is checked
-## too, because that is the "projectile look from data" contract end to end.
+## Проверка реального выстрела через ввод и параметров созданного снаряда.
 func _test_scene_shot() -> void:
-	print("-- shot: one round, aimed by a camera, projectile look from auto.tres")
+	print("-- shot: один выстрел с прицеливанием по камере, визуал снаряда из auto.tres")
 	var world := _new_world()
 	var eye := _new_eye(world)
 	var packed: PackedScene = load(_AUTO_SCENE_PATH)
@@ -288,79 +264,70 @@ func _test_scene_shot() -> void:
 	var log := _watch(pistol)
 
 	var barrel := pistol.get_node_or_null("Muzzle") as Node3D
-	_check(barrel != null, "precondition: the grafted scene carries its Muzzle marker")
+	_check(barrel != null, "предусловие: внедренная сцена содержит маркер Muzzle")
 
 	await _settle_fire_released()
 	Input.action_press("fire")
 	var fired := await _await_until(func() -> bool: return log.fired > 0, 5.0)
 	Input.action_release("fire")
-	_check(fired, "the held fire button produced a shot", "(got %d)" % log.fired)
-	_check(log.fired == 1, "exactly one shot came out", "(got %d)" % log.fired)
+	_check(fired, "зажатие кнопки стрельбы вызвало выстрел", "(получено %d)" % log.fired)
+	_check(log.fired == 1, "произведен ровно один выстрел", "(получено %d)" % log.fired)
 	_check(pistol.current_mag() == _EXPECTED_MAGAZINE - 1,
-		"the shot cost exactly one round", "(got %d)" % pistol.current_mag())
+		"выстрел потратил ровно один патрон", "(получено %d)" % pistol.current_mag())
 
 	var bullets := _live_projectiles(eye)
-	_check(bullets.size() == 1, "one projectile was spawned under the camera",
-		"(got %d)" % bullets.size())
+	_check(bullets.size() == 1, "один снаряд создан под камерой",
+		"(получено %d)" % bullets.size())
 	if bullets.size() == 1 and barrel != null:
 		var bullet := bullets[0]
-		# Sample late by design: the shot came through the input path, so the
-		# projectile has already flown part of its line by the time the harness
-		# sees it. What the start point is, is still decidable: a bullet that
-		# left the eye would sit at eye height (~1.7 m), one that left the
-		# barrel hangs at the barrel's height (~0 m) on the camera's line.
 		_check(bullet.global_position.distance_to(eye.global_position) > 0.5,
-			"the projectile is not hanging out of the eye",
-			"(%.3f m from the eye)" % bullet.global_position.distance_to(eye.global_position))
+			"снаряд не висит внутри камеры",
+			"(%.3f м от камеры)" % bullet.global_position.distance_to(eye.global_position))
 		_check(absf(bullet.global_position.y - barrel.global_position.y) < 0.2,
-			"it left from the barrel height, not the camera height",
-			"(bullet y=%.3f, barrel y=%.3f, eye y=%.3f)" % [
+			"вылет происходит на высоте ствола, а не камеры",
+			"(снаряд y=%.3f, ствол y=%.3f, камера y=%.3f)" % [
 				bullet.global_position.y, barrel.global_position.y, eye.global_position.y])
 		_check(_close(bullet.speed, _EXPECTED_SPEED),
-			"the projectile takes the auto's speed from the data",
-			"(got %.1f m/s)" % bullet.speed)
+			"снаряд перенимает скорость автомата из ресурса данных",
+			"(получено %.1f м/с)" % bullet.speed)
 		_check(_close(bullet.damage, _EXPECTED_DAMAGE),
-			"the projectile takes the auto's damage from the data",
-			"(got %.1f)" % bullet.damage)
+			"снаряд перенимает урон автомата из ресурса данных",
+			"(получено %.1f)" % bullet.damage)
 		_check(_close(bullet.radius, _EXPECTED_RADIUS),
-			"the projectile carries the auto's radius from the data",
-			"(got %.4f)" % bullet.radius)
+			"снаряд перенимает радиус автомата из ресурса данных",
+			"(получено %.4f)" % bullet.radius)
 		_check(_close_color(bullet.color, _data.projectile_color),
-			"the projectile carries the auto's color from the data",
-			"(got %s, want %s)" % [str(bullet.color), str(_data.projectile_color)])
+			"снаряд перенимает цвет автомата из ресурса данных",
+			"(получено %s, ожидалось %s)" % [str(bullet.color), str(_data.projectile_color)])
 
 		var trail := bullet.get_node_or_null("Trail") as MeshInstance3D
-		_check(trail != null, "the projectile carries a trail node")
+		_check(trail != null, "снаряд содержит узел шлейфа Trail")
 		if trail != null:
 			var sphere := trail.mesh as SphereMesh
 			_check(sphere != null and _close(sphere.radius, bullet.radius),
-				"the trail sphere has the data radius, so the visual follows auto.tres",
-				"(got %s)" % ("no SphereMesh" if sphere == null else "%.4f" % sphere.radius))
+				"сфера шлейфа имеет радиус из данных: визуал следует auto.tres",
+				"(получено %s)" % ("нет SphereMesh" if sphere == null else "%.4f" % sphere.radius))
 			var mat := trail.material_override as StandardMaterial3D
 			_check(mat != null and _close_color(mat.albedo_color, _data.projectile_color),
-				"the trail material carries the data color",
-				"(got %s)" % ("no material" if mat == null else str(mat.albedo_color)))
+				"материал шлейфа использует цвет из данных",
+				"(получено %s)" % ("нет материала" if mat == null else str(mat.albedo_color)))
 
 		var start: Vector3 = bullet.global_position
 		await _await_until(func() -> bool: return bullet.global_position.distance_to(start) > 0.5, 5.0)
 		var moved: Vector3 = bullet.global_position - start
 		_check(moved.length() > 0.5,
-			"the projectile is flying, so launch() was called on a node in the tree",
-			"(moved %.3f m)" % moved.length())
+			"снаряд летит в пространстве: launch() вызван на узле в дереве",
+			"(смещение %.3f м)" % moved.length())
 		_check(moved.normalized().dot(-eye.global_transform.basis.z) > 0.99,
-			"it leaves along the camera's forward axis",
-			"(%.3f m along %.3f m forward)" % [
+			"полет направлен строго вперед по оси камеры",
+			"(%.3f м вдоль %.3f м вперед)" % [
 				moved.length(), moved.normalized().dot(-eye.global_transform.basis.z)])
 	world.free()
 
 
-## The rate limit lives in seconds and comes from the data: 300 rpm is one shot
-## every 0.2 s, refused in the same instant and allowed once the interval has
-## passed. The interval is measured on the scene-created weapon, so the whole
-## chain (auto.tres -> pistol.gd -> actual timing) is under test, not just the
-## resource's arithmetic.
+## Проверка темпа стрельбы: 300 выстр/мин соответствует интервалу 0.2 с.
 func _test_fire_interval() -> void:
-	print("-- rate limit: one shot per %.1f s, in seconds not frames" % _EXPECTED_INTERVAL)
+	print("-- rate limit: один выстрел за %.1f с, тайминг в секундах, а не кадрах" % _EXPECTED_INTERVAL)
 	var world := _new_world()
 	var packed: PackedScene = load(_AUTO_SCENE_PATH)
 	if packed == null:
@@ -369,10 +336,10 @@ func _test_fire_interval() -> void:
 	var pistol := await _new_pistol_from_scene(world, packed, _data)
 	var log := _watch(pistol)
 
-	_check(pistol.try_fire(), "the first shot is allowed")
-	_check(not pistol.try_fire(), "a second shot in the same instant is refused")
-	_check(log.fired == 1, "only one round left the magazine",
-		"(got %d)" % log.fired)
+	_check(pistol.try_fire(), "первый выстрел разрешен")
+	_check(not pistol.try_fire(), "повторный выстрел в тот же миг отклоняется")
+	_check(log.fired == 1, "потрачен ровно один патрон",
+		"(получено %d)" % log.fired)
 
 	var start := _now_ms()
 	var second := false
@@ -382,14 +349,14 @@ func _test_fire_interval() -> void:
 			second = true
 			break
 	var elapsed := float(_now_ms() - start) / 1000.0
-	print("    second shot after %.3f s" % elapsed)
-	_check(second, "the next shot is allowed once the interval has passed")
+	print("    второй выстрел спустя %.3f с" % elapsed)
+	_check(second, "следующий выстрел разрешен по истечении интервала")
 	_check(elapsed >= _EXPECTED_INTERVAL - _TIMER_EPSILON,
-		"the second shot waited at least the full interval",
-		"(waited %.3f s, want >= %.2f s)" % [elapsed, _EXPECTED_INTERVAL - _TIMER_EPSILON])
+		"второй выстрел выждал как минимум полный интервал",
+		"(прошло %.3f с, ожидалось >= %.2f с)" % [elapsed, _EXPECTED_INTERVAL - _TIMER_EPSILON])
 	_check(elapsed <= _EXPECTED_INTERVAL + _TIMER_TOLERANCE,
-		"and did not wait much longer than the interval",
-		"(waited %.3f s, want <= %.2f s)" % [elapsed, _EXPECTED_INTERVAL + _TIMER_TOLERANCE])
-	_check(log.fired == 2, "exactly two rounds came out",
-		"(got %d)" % log.fired)
+		"и не задержался существенно дольше интервала",
+		"(прошло %.3f с, ожидалось <= %.2f с)" % [elapsed, _EXPECTED_INTERVAL + _TIMER_TOLERANCE])
+	_check(log.fired == 2, "произведено ровно два выстрела",
+		"(получено %d)" % log.fired)
 	world.free()

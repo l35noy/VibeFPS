@@ -1,45 +1,33 @@
-﻿extends SceneTree
+extends SceneTree
 
-## Interaction harness for VibeFPS (Phase 3, lobby track A): the ShopPoint and
-## DoorPoint interactables, the player's nearest_interactable() reach pick, and
-## the E (interact) route through the input gate.
+## Тестовый сценарий взаимодействия для VibeFPS (Фаза 3, лобби ветка A): интерактивные точки
+## ShopPoint и DoorPoint, метод поиска ближайшего объекта игрока nearest_interactable()
+## и обработка клавиши взаимодействия E (interact) через гейт ввода.
 ##
-## The SaveSystem autoload does not exist yet (a later task wires it into
-## project.godot), so the harness builds one by hand at
-## user://interact_test.json -- the same isolation tests/progression.gd uses, so
-## the production user://save.json is never touched. Scene transitions go
-## through an injected fake changer: headless has no window to swap scenes in,
-## and the production scenes must not be loaded out from under the harness.
+## Автозагрузка SaveSystem изолируется вручную по пути user://interact_test.json
+## — аналогично tests/progression.gd, исключая затрагивание боевого user://save.json.
+## Переходы между сценами идут через фейковый обработчик: в headless-режиме нет окна
+## для смены сцен.
 ##
-## The player is the shipped player.tscn instantiated on the root, with a probe
-## script answering the gate with an explicit mouse mode -- headless cannot
-## capture the cursor (Input.mouse_mode stays VISIBLE), exactly as
-## tests/movement.gd does. Interact lives in player.gd's _unhandled_input, so it
-## is driven with a parsed key event plus Input.flush_buffered_events():
-## Input.action_press alone never reaches _unhandled_input (tests/movement.gd
-## pins the same rule for jump), and an InputEventAction pressed while the
-## action is already pressed is deduplicated before it reaches the tree -- which
-## would make the second press in the gate check arrive nowhere. The key event
-## is the honest shape of the input anyway: input_actions.gd pins interact to
-## the physical E key.
+## Персонаж создается из реальной сцены player.tscn с тестовым скриптом _PlayerProbe,
+## эмулирующим режим захвата курсора для гейта ввода. Взаимодействие обрабатывается
+## в _unhandled_input персонажа через события InputEventKey с принудительным
+## сбросом буфера событий Input.flush_buffered_events().
 ##
-## Run: godot --headless --path . --script res://tests/interact.gd
-##      .\tools\run_checks.ps1 interact
+## Запуск: godot --headless --path . --script res://tests/interact.gd
+##         .\tools\run_checks.ps1 interact
 
 
-## Stand-in for player.gd, used only by this harness.
+## Тестовый зонд на базе player.gd.
 class _PlayerProbe extends "res://entities/player/player.gd":
-	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
+	## Режим мыши, передаваемый гейту ввода вместо Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
 	func _mouse_mode_for_play_input() -> int:
 		return gate_mouse_mode
 
 
-## Records what ShopPoint announces. The signal is the observable the gate check
-## needs: a second "purchase" of an already-owned weapon only equips, so it
-## changes no points and leaves the equipped id where it was -- without the
-## signal a gated press and an ungated one would look identical.
+## Регистратор сигналов ShopPoint.
 class _ShopLog extends RefCounted:
 	var ok_values: Array[bool] = []
 
@@ -47,19 +35,15 @@ class _ShopLog extends RefCounted:
 		ok_values.append(ok)
 
 
-## Isolated path every interaction uses. user://save.json is never touched.
+## Изолированный путь сохранения для теста. user://save.json никогда не затрагивается.
 const _TMP_PATH := "user://interact_test.json"
 const _PLAYER_SCENE := "res://entities/player/player.tscn"
 const _SHOP_SCRIPT := "res://levels/lobby/shop_point.gd"
 const _DOOR_SCRIPT := "res://levels/lobby/door_point.gd"
 
-## The reach the design fixes, restated here so a silent retune to 2.5 -- the
-## value the brief explicitly overrules (R2: the shop at 3.0 m must be found,
-## the door at 6.0 m must not) -- cannot turn this harness into a check of a
-## different number.
+## Ожидаемая дальность взаимодействия персонажа (3.5 м).
 const _EXPECTED_RANGE := 3.5
-## The shops's stand-in price is whatever GameState reads from auto.tres; the
-## points the harness grants match it so the arithmetic below is exact.
+## Стоимость автомата для проверки покупки.
 const _AUTO_PRICE := 300
 
 var _failures: PackedStringArray = []
@@ -71,8 +55,7 @@ var _shop: ShopPoint
 var _door: DoorPoint
 var _player: CharacterBody3D
 var _shop_log: _ShopLog
-## Paths handed to the fake scene changer, in call order. No scene is actually
-## swapped -- the fake only records what it was asked for.
+## Зафиксированные пути смены сцен в порядке вызова.
 var _changed_to: PackedStringArray = []
 
 
@@ -86,20 +69,17 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 
 
 func _finish() -> void:
-	print("=== RESULT: %d checks, %d failed ===" % [_checks, _failures.size()])
+	print("=== ИТОГ: проверок %d, ошибок %d ===" % [_checks, _failures.size()])
 	for f in _failures:
-		print("  FAILURE: %s" % f)
+		print("  ОШИБКА: %s" % f)
 
 
-## Fake scene changer: records the requested path and does nothing else. A real
-## change_scene_to_file would tear down this very SceneTree under the harness.
+## Фейковый обработчик смены сцен: только логирует запрошенные пути.
 func _fake_changer(path: String) -> void:
 	_changed_to.append(path)
 
 
-## PackedStringArray vs Array comparison by contents. Godot does not treat the
-## two container types as equal, so a plain `owned == ["pistol"]` would be false
-## even when the contents match.
+## Сравнение PackedStringArray и Array по элементам.
 func _packed_eq(packed: PackedStringArray, expected: Array) -> bool:
 	if packed.size() != expected.size():
 		return false
@@ -109,12 +89,7 @@ func _packed_eq(packed: PackedStringArray, expected: Array) -> bool:
 	return true
 
 
-## Dispatchable key event bound to the interact action. The gate check uses this
-## instead of InputEventAction on purpose: an InputEventAction pressed while the
-## action is already pressed is deduplicated before it reaches the tree, so the
-## second press in a row would silently arrive nowhere. A key event has no such
-## dedup, and it is the honest shape of the input anyway -- input_actions.gd pins
-## interact to the physical E key.
+## Создание события клавиатуры для действия interact (клавиша E).
 func _interact_key_event(pressed: bool) -> InputEventKey:
 	var ev := InputEventKey.new()
 	ev.physical_keycode = KEY_E
@@ -123,17 +98,15 @@ func _interact_key_event(pressed: bool) -> InputEventKey:
 	return ev
 
 
-## The hint string an @export carries ("Node3D", "WeaponData"...), a marker of an
-## object-typed export. Plain String exports carry no hint, so the type check
-## below reads the property's declared Variant.Type instead.
+## Строка подсказки экспортированного свойства объекта.
 func _property_hint(node: Object, property_name: String) -> String:
 	for entry in node.get_property_list():
 		if String(entry.get("name", "")) == property_name:
 			return String(entry.get("hint_string", ""))
-	return "<missing>"
+	return "<отсутствует>"
 
 
-## The declared Variant.Type of an export, straight from get_property_list().
+## Тип экспортированного свойства из get_property_list().
 func _property_type(node: Object, property_name: String) -> Variant.Type:
 	for entry in node.get_property_list():
 		if String(entry.get("name", "")) == property_name:
@@ -145,15 +118,7 @@ func _cleanup() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(_TMP_PATH))
 
 
-## The engine registers GameState/SaveSystem as project autoloads
-## (project.godot, Task 6) and installs nodes of those names under /root even in
-## --script mode. Left in place they would shadow the harness's own nodes of the
-## same name (Godot renames the later one, so /root/GameState would resolve to
-## the autoload, which reads user://save.json at _ready and would restore points
-## from an unrelated file) and ShopPoint/DoorPoint would talk to it instead.
-## Drop them first, so the harness owns /root/GameState and /root/SaveSystem
-## exactly as it did before the autoloads existed. Immediate free, not
-## queue_free: the names must be free before the nodes below are added.
+## Удаление автозагрузок проекта перед тестом, чтобы тестовые узлы владели именами в /root.
 func _drop_autoloads() -> void:
 	for autoload_name in ["GameState", "SaveSystem"]:
 		var node := root.get_node_or_null(autoload_name)
@@ -163,12 +128,10 @@ func _drop_autoloads() -> void:
 
 
 # --------------------------------------------------------------------------
-# world builders
+# построение тестового окружения
 # --------------------------------------------------------------------------
 
-## A floor under the player so the physics ticks the gate check awaits cannot
-## quietly drop it out of the shop's reach. Top face at y = 0, where the
-## player capsule's bottom sits (1.8 height centred at 0.9 in player.tscn).
+## Пол под ногами персонажа для предотвращения падения при физических тиках.
 func _new_floor() -> void:
 	var floor_body := StaticBody3D.new()
 	floor_body.name = "Floor"
@@ -182,33 +145,27 @@ func _new_floor() -> void:
 
 
 # --------------------------------------------------------------------------
-# entry point
+# точка входа
 # --------------------------------------------------------------------------
 
 func _initialize() -> void:
-	print("=== VibeFPS interact test ===")
+	print("=== VibeFPS: тест взаимодействия ===")
 	_drop_autoloads()
-	# Clean sheet: a leftover save from an interrupted run must not be restored
-	# into the state under test.
+	# Очистка остатков сохранения от прошлых запусков.
 	_cleanup()
 
 	_save = SaveSystem.new()
-	# The name is what makes /root/SaveSystem resolve for GameState's autosave.
 	_save.name = "SaveSystem"
 	_save.save_path = _TMP_PATH
 	root.add_child(_save)
 
 	_gs = GameState.new()
-	# The name is what makes /root/GameState resolve for ShopPoint/DoorPoint.
 	_gs.name = "GameState"
-	# Injected before add_child, so GameState._ready() must not overwrite it.
 	_gs.scene_changer = _fake_changer
 	root.add_child(_gs)
 
 	_new_floor()
 
-	# The two interactables are built before the player, so the player's first
-	# nearest_interactable() already sees both.
 	_shop = ShopPoint.new()
 	_shop.weapon_id = "auto"
 	_shop.position = Vector3(0.0, 0.0, -3.0)
@@ -221,19 +178,16 @@ func _initialize() -> void:
 
 	var packed: PackedScene = load(_PLAYER_SCENE)
 	if packed == null:
-		print("FATAL: cannot load %s" % _PLAYER_SCENE)
+		print("КРИТИЧЕСКАЯ ОШИБКА: не удалось загрузить %s" % _PLAYER_SCENE)
 		_finish()
 		quit(1)
 		return
 	_player = packed.instantiate() as CharacterBody3D
 	if _player == null:
-		print("FATAL: %s does not instantiate to a CharacterBody3D" % _PLAYER_SCENE)
+		print("КРИТИЧЕСКАЯ ОШИБКА: %s не является CharacterBody3D" % _PLAYER_SCENE)
 		_finish()
 		quit(1)
 		return
-	# Swapped before the node enters the tree, so @onready and _ready run on the
-	# probe script. Everything under test is the real player.gd; only the mouse
-	# mode the gate reads comes from the harness.
 	_player.set_script(_PlayerProbe)
 	_player.position = Vector3(0.0, 0.0, 0.0)
 	root.add_child(_player)
@@ -241,7 +195,7 @@ func _initialize() -> void:
 	_shop_log = _ShopLog.new()
 	_shop.interacted.connect(_shop_log._on_interacted)
 
-	# Let every _ready run (group join, collision layers, GameState restore).
+	# Ожидание готовности узлов (_ready, вступление в группы, коллизии).
 	await physics_frame
 
 	_test_contracts()
@@ -258,131 +212,123 @@ func _initialize() -> void:
 
 
 # --------------------------------------------------------------------------
-# checks
+# проверки
 # --------------------------------------------------------------------------
 
-## The references later tasks bind to: a renamed class, export, signal or layer
-## is a silent break for lobby.tscn and for the interaction itself.
+## Проверка контрактов классов, экспортов, сигналов, слоев коллизий и групп.
 func _test_contracts() -> void:
-	print("-- contracts: the classes, exports, signals, layers and group")
+	print("-- contracts: классы, экспорты, сигналы, слои коллизий и группы")
 	var shop_script := load(_SHOP_SCRIPT) as Script
-	_check(shop_script != null, "shop_point.gd loads")
+	_check(shop_script != null, "shop_point.gd загружается")
 	if shop_script == null:
 		return
 	_check(shop_script.get_global_name() == "ShopPoint",
-		"shop_point.gd declares class_name ShopPoint",
-		"(got \"%s\")" % shop_script.get_global_name())
+		"shop_point.gd объявляет class_name ShopPoint",
+		"(получено \"%s\")" % shop_script.get_global_name())
 	_check(shop_script.get_instance_base_type() == "Area3D",
-		"ShopPoint extends Area3D", "(got %s)" % shop_script.get_instance_base_type())
-	_check(_shop.has_method("interact"), "ShopPoint exposes interact()")
-	_check(_shop.has_signal("interacted"), "ShopPoint exposes the interacted signal")
+		"ShopPoint наследует Area3D", "(получено %s)" % shop_script.get_instance_base_type())
+	_check(_shop.has_method("interact"), "ShopPoint предоставляет метод interact()")
+	_check(_shop.has_signal("interacted"), "ShopPoint предоставляет сигнал interacted")
 	_check(_property_type(_shop, "weapon_id") == TYPE_STRING,
-		"weapon_id is a String export", "(got type %s)" % str(_property_type(_shop, "weapon_id")))
+		"weapon_id является String экспортом", "(получен тип %s)" % str(_property_type(_shop, "weapon_id")))
 	_check(int(_shop.collision_layer) == 1 << 5,
-		"ShopPoint lives on layer 6 (interactable)", "(got %d)" % int(_shop.collision_layer))
+		"ShopPoint находится на слое 6 (interactable)", "(получено %d)" % int(_shop.collision_layer))
 	_check(int(_shop.collision_mask) == 1 << 1,
-		"and its mask is the player layer", "(got %d)" % int(_shop.collision_mask))
-	_check(_shop.monitoring, "ShopPoint monitors overlaps")
-	_check(_shop.is_in_group("interactable"), "ShopPoint joins the interactable group")
+		"маска коллизий ShopPoint включает слой игрока", "(получено %d)" % int(_shop.collision_mask))
+	_check(_shop.monitoring, "ShopPoint отслеживает пересечения (monitoring = true)")
+	_check(_shop.is_in_group("interactable"), "ShopPoint состоит в группе interactable")
 
 	var door_script := load(_DOOR_SCRIPT) as Script
-	_check(door_script != null, "door_point.gd loads")
+	_check(door_script != null, "door_point.gd загружается")
 	if door_script == null:
 		return
 	_check(door_script.get_global_name() == "DoorPoint",
-		"door_point.gd declares class_name DoorPoint",
-		"(got \"%s\")" % door_script.get_global_name())
+		"door_point.gd объявляет class_name DoorPoint",
+		"(получено \"%s\")" % door_script.get_global_name())
 	_check(door_script.get_instance_base_type() == "Area3D",
-		"DoorPoint extends Area3D", "(got %s)" % door_script.get_instance_base_type())
-	_check(_door.has_method("interact"), "DoorPoint exposes interact()")
+		"DoorPoint наследует Area3D", "(получено %s)" % door_script.get_instance_base_type())
+	_check(_door.has_method("interact"), "DoorPoint предоставляет метод interact()")
 	_check(_property_type(_door, "location_id") == TYPE_STRING,
-		"location_id is a String export", "(got type %s)" % str(_property_type(_door, "location_id")))
+		"location_id является String экспортом", "(получен тип %s)" % str(_property_type(_door, "location_id")))
 	_check(int(_door.collision_layer) == 1 << 5,
-		"DoorPoint lives on layer 6 (interactable)", "(got %d)" % int(_door.collision_layer))
+		"DoorPoint находится на слое 6 (interactable)", "(получено %d)" % int(_door.collision_layer))
 	_check(int(_door.collision_mask) == 1 << 1,
-		"and its mask is the player layer", "(got %d)" % int(_door.collision_mask))
-	_check(_door.monitoring, "DoorPoint monitors overlaps")
-	_check(_door.is_in_group("interactable"), "DoorPoint joins the interactable group")
+		"маска коллизий DoorPoint включает слой игрока", "(получено %d)" % int(_door.collision_mask))
+	_check(_door.monitoring, "DoorPoint отслеживает пересечения (monitoring = true)")
+	_check(_door.is_in_group("interactable"), "DoorPoint состоит в группе interactable")
 
 
 func _test_shop_purchase() -> void:
-	print("-- shop: refused without points, bought with them")
-	_check(_gs.points == 0, "precondition: the player starts with no points",
-		"(got %d)" % _gs.points)
+	print("-- shop: отказ при нехватке очков, успешная покупка при наличии средств")
+	_check(_gs.points == 0, "предусловие: у игрока изначально 0 очков",
+		"(получено %d)" % _gs.points)
 	var refused := _shop.interact(_player)
-	_check(not refused, "the shop refuses the auto without points")
+	_check(not refused, "магазин отказывает в покупке автомата без очков")
 	_check(_packed_eq(_gs.owned_weapons, ["pistol"]),
-		"and does not hand it over", "(got %s)" % _gs.owned_weapons)
-	_check(_gs.points == 0, "and charges nothing", "(got %d)" % _gs.points)
+		"и не выдает оружие", "(получено %s)" % _gs.owned_weapons)
+	_check(_gs.points == 0, "баланс очков не изменяется", "(получено %d)" % _gs.points)
 	_check(_shop_log.ok_values.size() == 1 and _shop_log.ok_values[0] == false,
-		"the refused sale is announced as a refusal",
-		"(got %s)" % str(_shop_log.ok_values))
+		"сигнал interacted сообщил о неудаче (false)",
+		"(получено %s)" % str(_shop_log.ok_values))
 
 	_gs.award_points(_AUTO_PRICE)
 	var bought := _shop.interact(_player)
-	_check(bought, "the shop sells the %d auto once the player can afford it" % _AUTO_PRICE)
-	_check("auto" in _gs.owned_weapons, "the auto is now owned", "(got %s)" % _gs.owned_weapons)
-	_check(_gs.equipped_weapon_id == "auto", "and equipped",
-		"(got \"%s\")" % _gs.equipped_weapon_id)
-	_check(_gs.points == 0, "the price was deducted", "(got %d)" % _gs.points)
+	_check(bought, "магазин продает автомат за %d очков при наличии средств" % _AUTO_PRICE)
+	_check("auto" in _gs.owned_weapons, "автомат теперь в наличии", "(получено %s)" % _gs.owned_weapons)
+	_check(_gs.equipped_weapon_id == "auto", "и автомат экипирован",
+		"(получено \"%s\")" % _gs.equipped_weapon_id)
+	_check(_gs.points == 0, "стоимость покупки списана", "(получено %d)" % _gs.points)
 	_check(_shop_log.ok_values.size() == 2 and _shop_log.ok_values[1] == true,
-		"the sale is announced as a success", "(got %s)" % str(_shop_log.ok_values))
+		"сигнал interacted сообщил об успехе (true)", "(получено %s)" % str(_shop_log.ok_values))
 
 
 func _test_door_transition() -> void:
-	print("-- door: entering the range goes through the scene changer")
+	print("-- door: переход на стрельбище через смену сцены")
 	var entered := _door.interact(_player)
-	_check(entered, "the door enters the unlocked range")
+	_check(entered, "дверь открывает разблокированное стрельбище")
 	_check(_changed_to.size() > 0 and _changed_to[_changed_to.size() - 1] == "res://levels/range/range.tscn",
-		"the changer was asked for res://levels/range/range.tscn", "(got %s)" % _changed_to)
+		"обработчик запросил сцену res://levels/range/range.tscn", "(получено %s)" % _changed_to)
 
 
-## The reach the brief overrules 2.5 with (R2): a shop at 3.0 m is inside 3.5 m
-## and a door at 6.0 m is outside it, so a 2.5 m range or a 6.0 m one both fail
-## this pair.
+## Проверка радиуса взаимодействия: магазин на 3.0 м доступен (радиус 3.5 м),
+## дверь на 6.0 м недоступна.
 func _test_nearest_interactable() -> void:
-	print("-- reach: the nearest interactable within %.1f m, and nothing beyond" % _EXPECTED_RANGE)
+	print("-- reach: ближайший объект в радиусе %.1f м, ничего за его пределами" % _EXPECTED_RANGE)
 	_player.global_position = Vector3(0.0, 0.0, 0.0)
 	var nearest: Node = _player.call("nearest_interactable")
 	_check(nearest == _shop,
-		"the shop at 3.0 m is found (the range is 3.5, not 2.5)",
-		"(got %s)" % ("null" if nearest == null else nearest.name))
+		"магазин на 3.0 м обнаружен (радиус 3.5 м)",
+		"(получено %s)" % ("null" if nearest == null else nearest.name))
 
 	_shop.position = Vector3(0.0, 0.0, -10.0)
 	nearest = _player.call("nearest_interactable")
 	_check(nearest == null,
-		"with the shop at 10 m and the door at 6 m, nothing is in reach",
-		"(got %s)" % ("null" if nearest == null else nearest.name))
-	# Put the shop back: the gate check below needs a target an ungated press
-	# can actually reach.
+		"когда магазин на 10 м, а дверь на 6 м — в зоне досягаемости ничего нет",
+		"(получено %s)" % ("null" if nearest == null else nearest.name))
+	# Возвращаем магазин обратно для проверки гейта ввода.
 	_shop.position = Vector3(0.0, 0.0, -3.0)
 
 
-## Interact is play input: it must not be a way around a free cursor. With the
-## cursor free the same press has to do nothing at all, and capturing it has to
-## be the only thing that changes.
+## Взаимодействие является игровым вводом: оно блокируется при свободном курсоре
+## и разрешено только при захваченном курсоре мыши.
 func _test_input_gate() -> void:
-	print("-- input gate: interact does not get around the cursor being free")
+	print("-- input gate: взаимодействие блокируется при свободном курсоре")
 	_player.global_position = Vector3(0.0, 0.0, 0.0)
 	var before := _shop_log.ok_values.size()
 
 	_player.set("gate_mouse_mode", Input.MOUSE_MODE_VISIBLE)
 	Input.parse_input_event(_interact_key_event(true))
-	# Synchronous delivery, exactly as tests/movement.gd does for jump: Godot
-	# otherwise accumulates parsed events and flushes them only on the next main
-	# loop iteration, which would let the assertions race the delivery.
 	Input.flush_buffered_events()
 	await physics_frame
 	_check(_shop_log.ok_values.size() == before,
-		"a press with the cursor free reaches neither the shop nor its signal",
-		"(got %d signals)" % (_shop_log.ok_values.size() - before))
-	_check(_gs.points == 0, "and spends no points",
-		"(got %d)" % _gs.points)
+		"нажатие при свободном курсоре не достигает магазина и не вызывает сигнал",
+		"(получено сигналов: %d)" % (_shop_log.ok_values.size() - before))
+	_check(_gs.points == 0, "очки не тратятся",
+		"(получено %d)" % _gs.points)
 	_check(_gs.equipped_weapon_id == "auto",
-		"and leaves the equipped weapon alone", "(got \"%s\")" % _gs.equipped_weapon_id)
+		"экипированное оружие не изменяется", "(получено \"%s\")" % _gs.equipped_weapon_id)
 
-	# A real press returns through a release: the second press is a new press,
-	# not a repeat of the first one.
+	# Отпускаем и снова нажимаем при захваченном курсоре.
 	_player.set("gate_mouse_mode", Input.MOUSE_MODE_CAPTURED)
 	Input.parse_input_event(_interact_key_event(false))
 	Input.flush_buffered_events()
@@ -391,15 +337,14 @@ func _test_input_gate() -> void:
 	Input.flush_buffered_events()
 	await physics_frame
 	_check(_shop_log.ok_values.size() == before + 1,
-		"the same press reaches the shop once the cursor is captured",
-		"(got %d signals)" % (_shop_log.ok_values.size() - before))
+		"то же нажатие достигает магазина при захваченном курсоре",
+		"(получено сигналов: %d)" % (_shop_log.ok_values.size() - before))
 	if _shop_log.ok_values.size() == before + 1:
 		_check(_shop_log.ok_values[before] == true,
-			"and reports the second purchase as a success")
+			"повторное взаимодействие с купленным оружием сообщает об успехе")
 
-	# The second purchase of an owned weapon is an equip, not a charge.
 	_check(_gs.equipped_weapon_id == "auto",
-		"the second purchase only equips: auto stays equipped",
-		"(got \"%s\")" % _gs.equipped_weapon_id)
-	_check(_gs.points == 0, "and it charged nothing",
-		"(got %d)" % _gs.points)
+		"повторное взаимодействие только экипирует оружие: автомат остается экипирован",
+		"(получено \"%s\")" % _gs.equipped_weapon_id)
+	_check(_gs.points == 0, "и не списывает очки повторно",
+		"(получено %d)" % _gs.points)
