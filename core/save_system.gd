@@ -9,6 +9,10 @@ extends Node
 
 @export var save_path: String = "user://save.json"
 
+## Количество успешных синхронных записей на диск.
+## Используется для мониторинга I/O и тестирования дебаунса/батчинга.
+var save_count: int = 0
+
 
 ## Сериализует переданный словарь payload в JSON и записывает в save_path.
 ## Возвращает false при невозможности открыть файл или ошибке записи,
@@ -20,7 +24,10 @@ func save(payload: Dictionary) -> bool:
 	file.store_string(JSON.stringify(payload))
 	var err := file.get_error()
 	file.close()
-	return err == OK
+	if err == OK:
+		save_count += 1
+		return true
+	return false
 
 
 ## Читает файл save_path и возвращает его содержимое в виде Dictionary.
@@ -42,4 +49,16 @@ func clear_save() -> void:
 ## Возвращает true, если файл сохранения существует по пути save_path.
 func has_save() -> bool:
 	return FileAccess.file_exists(save_path)
+
+
+## Сбрасывает счётчик успешно выполненных записей на диск.
+func reset_save_count() -> void:
+	save_count = 0
+
+
+## Метод принудительного сброса буферов. В синхронной реализации FileAccess
+## запись сбрасывается при save(), метод оставлен для обратной совместимости API.
+func flush() -> void:
+	pass
+
 

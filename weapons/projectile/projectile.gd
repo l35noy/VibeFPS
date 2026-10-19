@@ -34,21 +34,71 @@ signal hit_something(target: Node)
 ## Радиус шлейфа в метрах. Приходит из данных оружия
 ## (WeaponData.projectile_radius): след показывает, где летит пуля, поэтому
 ## его размер обязан повторять размер снаряда.
-@export var radius: float = 0.08
+@export var radius: float = 0.08:
+	set(value):
+		radius = value
+		if _trail != null:
+			_trail.mesh = get_shared_mesh(radius)
+
 ## Цвет шлейфа. Приходит из данных оружия (WeaponData.projectile_color):
 ## след делает оружие узнаваемым на глаз — жёлтый автомат не спутать с
 ## серым пистолетом.
-@export var color: Color = Color(0.15, 0.15, 0.15)
+@export var color: Color = Color(0.15, 0.15, 0.15):
+	set(value):
+		color = value
+		if _trail != null:
+			var mat := get_shared_material(color)
+			_trail.material_override = mat
+			_trail_material = mat
+
+## Кастомная маска коллизий для целей. Если не 0, переопределяет стандартную маску (R2).
+@export_flags_3d_physics var target_mask: int = 0
 
 ## Слой 5 — `projectile`.
-const _COLLISION_LAYER := 1 << 4
-## Маска 1 | 4: мировая геометрия (слой 1) и хитбоксы врага (слой 4). Слоя
-## хитбокса игрока (7) в маске нет намеренно: игрок не должен получать урон от
-## собственных выстрелов, прошедших мимо цели.
-const _COLLISION_MASK := (1 << 0) | (1 << 3)
+const DEFAULT_COLLISION_LAYER := 1 << 4
+const _COLLISION_LAYER := DEFAULT_COLLISION_LAYER
+## Маска 1 | 4: мировая геометрия (слой 1) и хитбоксы врага (слой 4).
+## Для вражеских снарядов маска может настраиваться на хитбокс игрока (слой 7, 1 << 6).
+const DEFAULT_COLLISION_MASK := (1 << 0) | (1 << 3)
+const _COLLISION_MASK := DEFAULT_COLLISION_MASK
 
 ## Прозрачность шлейфа в начале полёта и её потолок.
 const _TRAIL_PEAK_ALPHA := 0.6
+
+## Статический кэш ресурсов шлейфа снарядов для предотвращения повторных аллокаций
+## и обеспечения эффективного батчинга рендеринга Godot (R6).
+static var _mesh_cache: Dictionary = {}
+static var _material_cache: Dictionary = {}
+
+
+## Получить или создать разделяемый экземпляр SphereMesh для заданного радиуса.
+static func get_shared_mesh(r: float) -> SphereMesh:
+	var key := snappedf(r, 0.0001)
+	if _mesh_cache.has(key):
+		return _mesh_cache[key]
+	var sphere := SphereMesh.new()
+	sphere.radius = r
+	sphere.height = r * 2.0
+	_mesh_cache[key] = sphere
+	return sphere
+
+
+## Получить или создать разделяемый экземпляр StandardMaterial3D для заданного базового цвета.
+static func get_shared_material(base_color: Color) -> StandardMaterial3D:
+	var key := base_color
+	if _material_cache.has(key):
+		return _material_cache[key]
+	var mat := StandardMaterial3D.new()
+	var trail_color := base_color
+	trail_color.a = _TRAIL_PEAK_ALPHA
+	mat.albedo_color = trail_color
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.metallic_specular = 0.0
+	mat.emission_enabled = true
+	mat.emission = base_color
+	mat.emission_energy_multiplier = 2.5
+	_material_cache[key] = mat
+	return mat
 
 ## Направление нормализовано один раз здесь; дальше оно только читается.
 var _direction := Vector3.FORWARD
@@ -60,11 +110,16 @@ var _trail: MeshInstance3D
 var _trail_material: StandardMaterial3D
 
 
-## Слой и маска задаются здесь, а не в сцене: правило «кого я вижу» и логика
-## попадания лежат в одном файле, и сцена не может их разъехать.
+## Слой и маска настраиваются при инициализации без безусловного затирания кастомной маски (R2).
 func _ready() -> void:
 	collision_layer = _COLLISION_LAYER
-	collision_mask = _COLLISION_MASK
+	if target_mask != 0:
+		collision_mask = target_mask
+	elif collision_mask != 1 and collision_mask != 0:
+		# Вызывающий код заранее настроил collision_mask до _ready(), сохраняем его
+		pass
+	else:
+		collision_mask = _COLLISION_MASK
 	# Снаряду нужно видеть другие Area3D, но сам он в чужие пересечения попадать
 	# не должен: иначе чужой код, слушающий пересечения, увидит каждый снаряд.
 	monitoring = true
@@ -139,17 +194,10 @@ func _spend() -> void:
 	queue_free()
 
 
-## Шлейф: дочерний MeshInstance3D, который бледнеет по времени жизни.
-##
-## Вид шлейфа приходит из данных оружия (`radius` и `color` этого снаряда),
-## а не из литералов: оружие с другим `projectile_radius`/`projectile_color`
-## должно менять след не через правку кода, а через свой .tres. Сцена может
-## дать свою заготовку шлейфа (узел `Trail` с мешем и материалом), но её
-## геометрия и цвет здесь приводятся к данным оружия — локальной копией,
-## чтобы не мутировать общий для всех инстансов ресурс .tscn. Затухание —
-## уменьшение `albedo_color.a` каждый кадр, а НЕ Tween: Tween продолжает
-## работать и после попадания, а шлейф обязан умирать вместе со снарядом, и
-## иначе в месте попадания оставался бы висящий в воздухе полупрозрачный шар.
+## Шлейф: дочерний MeshInstance3D, использующий разделяемые статические ресурсы
+## SphereMesh и StandardMaterial3D без вызовов duplicate() на каждый выстрел (R6).
+## Затухание управляется свойством transparency узла MeshInstance3D (GeometryInstance3D),
+## что исключает взаимную перезапись альфа-канала общего материала одновременно летящих пуль.
 func _setup_trail() -> void:
 	if _trail == null:
 		for child in get_children():
@@ -160,36 +208,27 @@ func _setup_trail() -> void:
 		_trail = MeshInstance3D.new()
 		_trail.name = "Trail"
 		add_child(_trail)
-	var sphere := _trail.mesh as SphereMesh
-	if sphere == null:
-		sphere = SphereMesh.new()
-		_trail.mesh = sphere
-	elif not sphere.resource_local_to_scene:
-		# Меш из .tscn — ресурс, общий для всех инстансов сцены: копия нужна,
-		# иначе правка радиуса здесь поменяла бы след у каждого снаряда.
-		sphere = sphere.duplicate() as SphereMesh
-		_trail.mesh = sphere
-	sphere.radius = radius
-	sphere.height = radius * 2.0
-	var mat := _trail.material_override as StandardMaterial3D
-	if mat == null:
-		mat = StandardMaterial3D.new()
-		_trail.material_override = mat
-	elif not mat.resource_local_to_scene:
-		# Та же причина, что у меша: материал .tscn общий, а у каждого оружия
-		# свой цвет следа.
-		mat = mat.duplicate() as StandardMaterial3D
-		_trail.material_override = mat
-	var trail_color := color
-	trail_color.a = _TRAIL_PEAK_ALPHA
-	mat.albedo_color = trail_color
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_trail.mesh = get_shared_mesh(radius)
+	var mat := get_shared_material(color)
+	_trail.material_override = mat
 	_trail_material = mat
+	_trail.transparency = 0.0
 
 
 func _fade_trail() -> void:
-	if _trail_material == null or lifetime <= 0.0:
+	if _trail == null or lifetime <= 0.0:
 		return
-	var color := _trail_material.albedo_color
-	color.a = _TRAIL_PEAK_ALPHA * clampf(1.0 - _age / lifetime, 0.0, 1.0)
-	_trail_material.albedo_color = color
+	_trail.transparency = clampf(_age / lifetime, 0.0, 1.0)
+
+
+## Задать целевую маску коллизий для снаряда.
+func set_target_mask(mask: int) -> void:
+	target_mask = mask
+	collision_mask = mask
+
+
+## Эффективная альфа шлейфа с учетом прозрачности геометрии.
+func get_trail_alpha() -> float:
+	if _trail == null or _trail_material == null:
+		return 0.0
+	return _trail_material.albedo_color.a * (1.0 - _trail.transparency)

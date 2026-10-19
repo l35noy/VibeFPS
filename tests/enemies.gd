@@ -1170,6 +1170,154 @@ func _color_near(got: Color, want: Color) -> bool:
 # Task 4: навигация
 # --------------------------------------------------------------------------
 
+## R5: Оптимизация навигации и кэширование игрока на 120 Гц.
+## Проверяет:
+## 1. _player() кэширует ссылку на игрока в _cached_player и не опрашивает
+##    реестр SceneTree при валидном кэше.
+## 2. При выходе игрока из группы "player" или удалении узла кэш инвалидируется.
+## 3. Обновление _agent.target_position оптимизировано:
+##    - первое обновление происходит немедленно на первом тике (_last_target_position == Vector3.INF);
+##    - при неподвижном игроке обновления не спамятся на каждом тике 120 Гц;
+##    - плановое обновление происходит по истечении интервала 0.1 с;
+##    - смещение игрока на расстояние >= 0.25 м вызывает немедленное обновление.
+func _test_enemy_optimization() -> void:
+	print("-- Оптимизация навигации и кэширование игрока на 120 Гц (R5)")
+
+	var packed: PackedScene = load(_ENEMY_PATH)
+	if packed == null:
+		_bail("не удалось загрузить %s для теста оптимизации" % _ENEMY_PATH)
+		return
+
+	var world := _new_world()
+	_add_floor(world)
+
+	# --- Часть 1: Кэширование ссылки на игрока в _player() ---
+	var target1 := Node3D.new()
+	target1.name = "PlayerTarget1"
+	if not await _spawn_in(world, target1, Vector3(0.0, 0.0, 5.0)):
+		_bail("цель target1 не стала node-ready")
+		return
+	target1.add_to_group("player")
+
+	var enemy := packed.instantiate()
+	enemy.name = "OptEnemy1"
+	if not await _spawn_in(world, enemy, Vector3(0.0, 0.0, 0.0)):
+		_bail("враг OptEnemy1 не стал node-ready")
+		return
+
+	await physics_frame
+
+	var resolved_player: Node3D = enemy.call("_player")
+	_check(resolved_player == target1,
+		"_player() возвращает узел игрока из группы \"player\"",
+		"(got %s)" % ("null" if resolved_player == null else resolved_player.name))
+
+	var cached_field: Variant = enemy.get("_cached_player")
+	_check(cached_field == target1,
+		"_cached_player кэширует ссылку на найденного игрока")
+
+	# Проверка O(1) кэширования: подменяем кэш на mock_target, находящийся в группе "player".
+	# Если _player() обращается к кэшу, он обязан вернуть mock_target,
+	# не вызывая get_tree().get_first_node_in_group("player").
+	var target_mock := Node3D.new()
+	target_mock.name = "PlayerTargetMock"
+	if not await _spawn_in(world, target_mock, Vector3(2.0, 0.0, 5.0)):
+		_bail("цель target_mock не стала node-ready")
+		return
+	target_mock.add_to_group("player")
+
+	enemy.set("_cached_player", target_mock)
+	var from_cache: Node3D = enemy.call("_player")
+	_check(from_cache == target_mock,
+		"_player() при валидном кэше возвращает узел из кэша без повторного опроса дерева узлов")
+
+	# Проверка инвалидации при исключении из группы:
+	target_mock.remove_from_group("player")
+	var after_unshare: Node3D = enemy.call("_player")
+	_check(after_unshare == target1,
+		"при исключении узла из группы кэш инвалидируется и _player() находит актуального игрока")
+	_check(enemy.get("_cached_player") == target1,
+		"_cached_player обновлён на актуального игрока target1")
+
+	# Проверка инвалидации при удалении игрока из дерева:
+	target1.queue_free()
+	await physics_frame
+	var after_free: Node3D = enemy.call("_player")
+	_check(after_free == null,
+		"при удалении игрока _player() возвращает null без сбоев")
+	_check(enemy.get("_cached_player") == null,
+		"_cached_player сброшен в null при отсутствии игроков")
+
+	enemy.queue_free()
+	target_mock.queue_free()
+	await physics_frame
+
+	# --- Часть 2: Троттлинг NavigationAgent3D.target_position на 120 Гц ---
+	var nav_player := Node3D.new()
+	nav_player.name = "NavPlayer"
+	if not await _spawn_in(world, nav_player, Vector3(0.0, 0.0, 5.0)):
+		_bail("цель NavPlayer не стала node-ready")
+		return
+	nav_player.add_to_group("player")
+
+	var nav_enemy := packed.instantiate()
+	nav_enemy.name = "OptNavEnemy"
+	if not await _spawn_in(world, nav_enemy, Vector3(0.0, 0.0, 0.0)):
+		_bail("враг OptNavEnemy не стал node-ready")
+		return
+
+	# На первом тике физики происходит первичное обновление target_position
+	await physics_frame
+	var initial_updates: int = int(nav_enemy.get("_nav_updates_count"))
+	_check(initial_updates == 1,
+		"на первом тике target_position обновляется немедленно (_last_target_position == Vector3.INF)",
+		"(got %d)" % initial_updates)
+	var last_pos: Vector3 = nav_enemy.get("_last_target_position")
+	_check(last_pos.distance_to(nav_player.global_position) < 0.001,
+		"целевая позиция на первом тике точно совпадает с позицией игрока")
+
+	# Игрок остаётся неподвижным. Пропускаем 10 тиков (около 83 мс при 120 Гц, что меньше интервала 100 мс = 0.1 с)
+	for i in 10:
+		await physics_frame
+	var updates_after_10: int = int(nav_enemy.get("_nav_updates_count"))
+	_check(updates_after_10 == 1,
+		"при неподвижном игроке target_position не спамит обновлениями на каждом тике (10 тиков = 0 повторных обновлений)",
+		"(got %d)" % updates_after_10)
+
+	# Ждём ещё 5 тиков (суммарно 15 тиков = 125 мс > 100 мс = 0.1 с) — интервал таймера истёк
+	for i in 5:
+		await physics_frame
+	var updates_after_timer: int = int(nav_enemy.get("_nav_updates_count"))
+	_check(updates_after_timer == 2,
+		"по истечении таймера 0.1 с происходит ровно одно плановое обновление пути",
+		"(got %d)" % updates_after_timer)
+
+	# Небольшое смещение (< 0.25 м, например 0.1 м, 0.1^2 = 0.01 < 0.0625)
+	nav_player.global_position += Vector3(0.1, 0.0, 0.0)
+	await physics_frame
+	var updates_after_small_move: int = int(nav_enemy.get("_nav_updates_count"))
+	_check(updates_after_small_move == 2,
+		"смещение игрока меньше порога 0.25 м (0.1 м) не вызывает внеочередного пересчёта пути",
+		"(got %d)" % updates_after_small_move)
+
+	# Существенное смещение (>= 0.25 м, например 0.4 м, суммарно 0.5 м)
+	nav_player.global_position += Vector3(0.4, 0.0, 0.0)
+	await physics_frame
+	var updates_after_big_move: int = int(nav_enemy.get("_nav_updates_count"))
+	_check(updates_after_big_move == 3,
+		"смещение игрока на 0.4 м (>= 0.25 м) немедленно обновляет target_position без ожидания таймера",
+		"(got %d)" % updates_after_big_move)
+	var final_pos: Vector3 = nav_enemy.get("_last_target_position")
+	_check(final_pos.distance_to(nav_player.global_position) < 0.001,
+		"целевая точка пути синхронизирована с новым положением игрока")
+
+	nav_player.remove_from_group("player")
+	nav_enemy.queue_free()
+	nav_player.queue_free()
+	world.queue_free()
+	await physics_frame
+
+
 ## Четвёртый раздел: враг идёт к игроку по запечённому навмешу.
 ##
 ## Что откуда берётся. Враг — настоящий инстанс enemy_contact.tscn, и агент
@@ -1989,6 +2137,7 @@ func _initialize() -> void:
 	await _test_death_returns_to_lobby()
 	await _test_contact_enemy()
 	await _test_kill_awards_points()
+	await _test_enemy_optimization()
 	await _test_enemy_navigation()
 	await _test_range_scene_wiring()
 

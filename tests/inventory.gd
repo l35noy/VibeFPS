@@ -51,6 +51,15 @@ func _inventory_key_event(pressed: bool) -> InputEventKey:
 	return ev
 
 
+## Событие нажатия физической клавиши Escape для паузы / закрытия модальных окон.
+func _pause_key_event(pressed: bool) -> InputEventKey:
+	var ev := InputEventKey.new()
+	ev.physical_keycode = KEY_ESCAPE
+	ev.keycode = KEY_ESCAPE
+	ev.pressed = pressed
+	return ev
+
+
 ## Находит кнопку, чей текст начинается с prefix.
 func _button_with(list: Node, prefix: String) -> Button:
 	for child in list.get_children():
@@ -83,6 +92,8 @@ func _initialize() -> void:
 	await _test_panel_buttons()
 	await _test_selection_equips_and_closes()
 	await _test_toggle_action()
+	await _test_escape_closes()
+	await _test_modal_blocks_focus_recapture()
 	await _test_null_safety()
 	await _test_weapon_swap()
 
@@ -207,6 +218,84 @@ func _test_toggle_action() -> void:
 		"повторное нажатие I закрывает панель")
 
 	ui.queue_free()
+	gs.queue_free()
+	await physics_frame
+
+
+## Нажатие Escape (pause) при открытом инвентаре закрывает панель и поглощает ввод.
+func _test_escape_closes() -> void:
+	print("-- ввод: нажатие Escape закрывает открытый инвентарь")
+	var gs := _make_game_state()
+	await physics_frame
+	gs.owned_weapons = PackedStringArray(["pistol"])
+	gs.equipped_weapon_id = "pistol"
+
+	var ui := (load(_UI_SCENE) as PackedScene).instantiate()
+	root.add_child(ui)
+	await physics_frame
+	var panel := ui.get_node_or_null("InventoryPanel")
+	_check(panel != null and panel.is_in_group("modal_ui"),
+		"InventoryPanel состоит в группе modal_ui")
+	if panel != null:
+		panel.call("bind", gs)
+		panel.call("open")
+		_check(bool(panel.call("is_open")) and panel.visible,
+			"панель открыта перед нажатием Escape")
+
+		Input.parse_input_event(_pause_key_event(true))
+		Input.flush_buffered_events()
+		await physics_frame
+		_check(not bool(panel.call("is_open")) and not panel.visible,
+			"нажатие Escape закрывает панель инвентаря")
+
+		Input.parse_input_event(_pause_key_event(false))
+		Input.flush_buffered_events()
+		await physics_frame
+
+	ui.queue_free()
+	gs.queue_free()
+	await physics_frame
+
+
+## Активное модальное окно блокирует захват мыши при фокусе окна и переключении паузы.
+func _test_modal_blocks_focus_recapture() -> void:
+	print("-- модальность: открытый инвентарь блокирует захват мыши при focus_entered")
+	var gs := _make_game_state()
+	await physics_frame
+	gs.owned_weapons = PackedStringArray(["pistol"])
+	gs.equipped_weapon_id = "pistol"
+
+	var player := (load(_PLAYER_SCENE) as PackedScene).instantiate() as CharacterBody3D
+	root.add_child(player)
+	await physics_frame
+
+	_check(player.has_method("is_modal_active"),
+		"player.gd реализует метод is_modal_active()")
+	_check(not bool(player.call("is_modal_active")),
+		"при закрытом инвентаре is_modal_active() возвращает false")
+
+	var panel := player.get_node_or_null("UI/InventoryPanel")
+	_check(panel != null, "в сцене player.tscn найден узел UI/InventoryPanel")
+	if panel != null:
+		panel.call("open")
+		_check(bool(player.call("is_modal_active")),
+			"при открытом инвентаре is_modal_active() возвращает true")
+
+		# Симулируем возврат фокуса окна
+		player.call("_on_focus_entered")
+		_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
+			"при активном модальном окне _on_focus_entered() не переводит мышь в захваченный режим")
+
+		# Симулируем попытку переключения паузы напрямую
+		player.call("_toggle_mouse_capture")
+		_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
+			"при активном модальном окне _toggle_mouse_capture() не захватывает курсор")
+
+		panel.call("close")
+		_check(not bool(player.call("is_modal_active")),
+			"после закрытия инвентаря is_modal_active() возвращает false")
+
+	player.queue_free()
 	gs.queue_free()
 	await physics_frame
 

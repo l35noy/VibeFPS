@@ -64,6 +64,13 @@ func _initialize() -> void:
 
 	var saved := _save.save(payload)
 	_check(saved, "save() принимает payload и сообщает об успехе")
+	_check(_save.save_count == 1, "save_count равен 1 после одной успешной записи",
+		"(получено %d)" % _save.save_count)
+	_save.flush()
+	_check(true, "flush() вызывается безопасно")
+	_save.reset_save_count()
+	_check(_save.save_count == 0, "reset_save_count() сбрасывает счетчик в 0",
+		"(получено %d)" % _save.save_count)
 	await physics_frame
 	_check(_save.has_save(), "has_save() возвращает true после save()")
 

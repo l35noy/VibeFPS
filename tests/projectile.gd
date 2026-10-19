@@ -100,6 +100,7 @@ func _initialize() -> void:
 
 	await _test_script_contracts()
 	await _test_layers_and_masks()
+	await _test_custom_collision_mask()
 	await _test_constant_speed_flight()
 	await _test_direction_is_normalised_once()
 	await _test_hit_hurtbox()
@@ -109,8 +110,10 @@ func _initialize() -> void:
 	await _test_damage_multiplier()
 	await _test_ignores_plain_areas()
 	await _test_ignores_player_hurtbox()
+	await _test_hits_player_hurtbox_with_custom_mask()
 	await _test_two_contacts_in_one_frame()
 	await _test_trail_fades()
+	await _test_shared_graphic_resources()
 	_test_source_contract()
 
 	_finish()
@@ -268,6 +271,50 @@ func _test_layers_and_masks() -> void:
 		"снаряд не является monitorable (false)")
 	_check(bool(hurtbox.monitorable),
 		"hurtbox доступен для обнаружения (monitorable = true)")
+	world.free()
+
+
+## Проверка сохранения кастомной маски коллизий при добавлении в дерево узлов (R2).
+func _test_custom_collision_mask() -> void:
+	print("-- custom mask: сохранение кастомной маски коллизий при добавлении в дерево")
+	var world := _new_world()
+
+	# 1. Снаряд по умолчанию: 1 (Area3D default) преобразуется в DEFAULT_COLLISION_MASK (1 | 4 = 9)
+	var bullet_default = _projectile_script.new()
+	world.add_child(bullet_default)
+	_check(int(bullet_default.collision_mask) == (_LAYER_WORLD | _LAYER_ENEMY_HURTBOX),
+		"снаряд без кастомизации получает маску мира и хитбокса врага (9)",
+		"(маска %d)" % int(bullet_default.collision_mask))
+	bullet_default.free()
+
+	# 2. Установка через target_mask сохраняется
+	var bullet_target = _projectile_script.new()
+	var custom_mask := _LAYER_WORLD | _LAYER_PLAYER_HURTBOX
+	bullet_target.target_mask = custom_mask
+	world.add_child(bullet_target)
+	_check(int(bullet_target.collision_mask) == custom_mask,
+		"снаряд с target_mask сохраняет маску после add_child",
+		"(ожидалось %d, получено %d)" % [custom_mask, int(bullet_target.collision_mask)])
+	bullet_target.free()
+
+	# 3. Прямая установка collision_mask до add_child сохраняется
+	var bullet_direct = _projectile_script.new()
+	bullet_direct.collision_mask = custom_mask
+	world.add_child(bullet_direct)
+	_check(int(bullet_direct.collision_mask) == custom_mask,
+		"снаряд с предварительно настроенным collision_mask сохраняет его в _ready",
+		"(ожидалось %d, получено %d)" % [custom_mask, int(bullet_direct.collision_mask)])
+	bullet_direct.free()
+
+	# 4. Если collision_mask был 0, назначается стандартная маска
+	var bullet_zero = _projectile_script.new()
+	bullet_zero.collision_mask = 0
+	world.add_child(bullet_zero)
+	_check(int(bullet_zero.collision_mask) == (_LAYER_WORLD | _LAYER_ENEMY_HURTBOX),
+		"некастомизированная маска 0 сбрасывается на дефолтную маску",
+		"(маска %d)" % int(bullet_zero.collision_mask))
+	bullet_zero.free()
+
 	world.free()
 
 
@@ -590,6 +637,52 @@ func _test_ignores_player_hurtbox() -> void:
 	world.free()
 
 
+## Проверка возможности поражения хертбокса игрока снарядом с соответствующей маской (R2).
+func _test_hits_player_hurtbox_with_custom_mask() -> void:
+	print("-- hit player hurtbox: снаряд с маской игрока поражает хертбокс игрока")
+	var world := _new_world()
+	_add_wall(world, _WALL_FRONT)
+	var player_hurtbox = _add_hurtbox(world, Vector3(_NEAR_TARGET_X, 0.0, 0.0), _TARGET_RADIUS)
+	player_hurtbox.collision_layer = _LAYER_PLAYER_HURTBOX
+	var enemy_hurtbox = _add_hurtbox(world, Vector3(_FAR_TARGET_X, 0.0, 0.0), _TARGET_RADIUS)
+	var player_log := _watch(player_hurtbox)
+	var enemy_log := _watch(enemy_hurtbox)
+	var hits: Array[Node] = []
+
+	var bullet = _projectile_script.new()
+	bullet.name = "EnemyProjectile"
+	_add_sphere(bullet, _BULLET_RADIUS)
+	bullet.speed = _SPEED
+	bullet.damage = _DAMAGE
+	bullet.lifetime = 3.0
+	bullet.target_mask = _LAYER_WORLD | _LAYER_PLAYER_HURTBOX
+	bullet.position = Vector3.ZERO
+	bullet.hit_something.connect(hits.append)
+	world.add_child(bullet)
+	await _physics_frames(2)
+
+	_check(int(bullet.collision_mask) == (_LAYER_WORLD | _LAYER_PLAYER_HURTBOX),
+		"маска снаряда настроена на мир и хертбокс игрока (65)",
+		"(маска %d)" % int(bullet.collision_mask))
+
+	bullet.launch(Vector3.RIGHT)
+	await _frames_until_free(bullet, 400)
+
+	_check(player_log.count() == 1,
+		"хертбокс игрока успешно получил урон от вражеского снаряда",
+		"(получено %d)" % player_log.count())
+	_check(player_log.count() == 1 and is_equal_approx(player_log.amounts[0], _DAMAGE),
+		"урон хертбоксу игрока равен урону снаряда",
+		"(получено %s)" % str(player_log.amounts))
+	_check(enemy_log.count() == 0,
+		"вражеский хертбокс за игроком не получил урон: снаряд потрачен на игроке",
+		"(получено %d)" % enemy_log.count())
+	_check(hits.size() == 1 and hits[0] == player_hurtbox,
+		"сигнал hit_something зарегистрировал попадание в хертбокс игрока",
+		"(зафиксировано %s)" % ("ничего" if hits.is_empty() else str(hits[0].name)))
+	world.free()
+
+
 ## Проверка одновременного контакта с зоной и телом в одном кадре.
 func _test_two_contacts_in_one_frame() -> void:
 	print("-- same frame: одновременный контакт с зоной и телом в одном кадре дает ровно одно попадание")
@@ -640,11 +733,11 @@ func _test_trail_fades() -> void:
 			_check(material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
 				"материал шлейфа поддерживает альфа-прозрачность",
 				"(transparency=%d)" % material.transparency)
-			var start_alpha := material.albedo_color.a
+			var start_alpha: float = material.albedo_color.a * (1.0 - trail.transparency)
 			_check(start_alpha > 0.0, "шлейф изначально видим", "(alpha=%.3f)" % start_alpha)
 			bullet.launch(Vector3.RIGHT)
 			await _physics_frames(20)
-			var mid_alpha := material.albedo_color.a
+			var mid_alpha: float = material.albedo_color.a * (1.0 - trail.transparency)
 			_check(mid_alpha < start_alpha,
 				"шлейф затухает во время полета снаряда",
 				"(alpha %.3f -> %.3f после 20 из %d тиков)" % [
@@ -652,9 +745,52 @@ func _test_trail_fades() -> void:
 			_check(mid_alpha > 0.0, "затухание постепенное, снаряд не исчезает мгновенно",
 				"(alpha=%.3f)" % mid_alpha)
 			await _physics_frames(28)
-			_check(material.albedo_color.a < mid_alpha,
+			var end_alpha: float = material.albedo_color.a * (1.0 - trail.transparency)
+			_check(end_alpha < mid_alpha,
 				"затухание продолжается до конца времени жизни",
-				"(alpha %.3f -> %.3f)" % [mid_alpha, material.albedo_color.a])
+				"(alpha %.3f -> %.3f)" % [mid_alpha, end_alpha])
+	world.free()
+
+
+## Проверка разделения графических ресурсов (SphereMesh и StandardMaterial3D) между выстрелами (R6).
+func _test_shared_graphic_resources() -> void:
+	print("-- graphic resources: повторные выстрелы используют один и тот же инстанс SphereMesh и StandardMaterial3D")
+	var world := _new_world()
+	var bullet1 = _add_projectile(world, Vector3(0.0, 0.0, 0.0))
+	var bullet2 = _add_projectile(world, Vector3(0.0, 1.0, 0.0))
+	await _physics_frames(2)
+
+	var trail1 = bullet1.get_node_or_null("Trail") as MeshInstance3D
+	var trail2 = bullet2.get_node_or_null("Trail") as MeshInstance3D
+	_check(trail1 != null and trail2 != null,
+		"оба снаряда содержат узел Trail MeshInstance3D")
+	if trail1 != null and trail2 != null:
+		var mesh1 := trail1.mesh as SphereMesh
+		var mesh2 := trail2.mesh as SphereMesh
+		_check(mesh1 != null and mesh2 != null,
+			"оба шлейфа имеют SphereMesh")
+		_check(mesh1 == mesh2,
+			"повторные выстрелы одного радиуса разделяют один и тот же инстанс SphereMesh без duplicate()",
+			"(mesh1: %s, mesh2: %s)" % [str(mesh1), str(mesh2)])
+		var mat1 := trail1.material_override as StandardMaterial3D
+		var mat2 := trail2.material_override as StandardMaterial3D
+		_check(mat1 != null and mat2 != null,
+			"оба шлейфа имеют StandardMaterial3D")
+		_check(mat1 == mat2,
+			"снаряды одного цвета разделяют один и тот же экземпляр StandardMaterial3D",
+			"(mat1: %s, mat2: %s)" % [str(mat1), str(mat2)])
+
+	# Снаряд с другим радиусом получает отдельный меш из кэша
+	var bullet3 = _projectile_script.new()
+	bullet3.radius = 0.12
+	world.add_child(bullet3)
+	await _physics_frames(2)
+	var trail3 = bullet3.get_node_or_null("Trail") as MeshInstance3D
+	if trail3 != null and trail1 != null:
+		_check(trail3.mesh != trail1.mesh,
+			"снаряд с другим калибром использует отдельный меш соответствующего радиуса")
+	bullet3.free()
+
 	world.free()
 
 

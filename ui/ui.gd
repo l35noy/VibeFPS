@@ -23,15 +23,25 @@ extends CanvasLayer
 var _player: Node = null
 var _weapon: Node = null
 var _game_state: Node = null
+var _is_reloading: bool = false
 
 @onready var _health_label: Label = get_node_or_null("HealthLabel") as Label
 @onready var _health_bar: ProgressBar = get_node_or_null("HealthBar") as ProgressBar
+@onready var _reload_label: Label = get_node_or_null("ReloadLabel") as Label
 @onready var _ammo_label: Label = get_node_or_null("AmmoLabel") as Label
 @onready var _points_label: Label = get_node_or_null("PointsLabel") as Label
+@onready var _inventory_panel: Control = get_node_or_null("InventoryPanel") as Control
 
 
 func _ready() -> void:
 	bind(_find_player(), _find_weapon(), _find_game_state())
+
+
+## Открыто ли какое-либо модальное окно интерфейса (инвентарь).
+func is_modal_open() -> bool:
+	if _inventory_panel != null and _inventory_panel.has_method("is_open"):
+		return bool(_inventory_panel.call("is_open"))
+	return false
 
 
 ## Отписка при выходе из дерева: узлы, к которым HUD был привязан, переживают
@@ -79,6 +89,8 @@ func _connect_sources() -> void:
 		_connect(_player, "health_changed", _on_health_changed)
 		_connect(_player, "weapon_changed", _on_weapon_changed)
 	_connect(_weapon, "magazine_changed", _on_magazine_changed)
+	_connect(_weapon, "reload_started", _on_reload_started)
+	_connect(_weapon, "reload_finished", _on_reload_finished)
 	_connect(_game_state, "points_changed", _on_points_changed)
 
 
@@ -86,7 +98,10 @@ func _disconnect_sources() -> void:
 	_disconnect(_player, "health_changed", _on_health_changed)
 	_disconnect(_player, "weapon_changed", _on_weapon_changed)
 	_disconnect(_weapon, "magazine_changed", _on_magazine_changed)
+	_disconnect(_weapon, "reload_started", _on_reload_started)
+	_disconnect(_weapon, "reload_finished", _on_reload_finished)
 	_disconnect(_game_state, "points_changed", _on_points_changed)
+	_render_reload(false)
 
 
 ## Подписка на сигнал, если он вообще есть у источника: узел без нужного сигнала
@@ -119,6 +134,10 @@ func _refresh_all() -> void:
 		_render_health(float(_player.call("health")), _max_health_of(_player))
 	if _weapon != null and _weapon.has_method("current_mag"):
 		_render_ammo(int(_weapon.call("current_mag")))
+	if _weapon != null and _weapon.has_method("is_reloading"):
+		_render_reload(bool(_weapon.call("is_reloading")))
+	else:
+		_render_reload(false)
 	if _game_state != null:
 		var current_points: Variant = _game_state.get("points")
 		if current_points != null:
@@ -143,10 +162,18 @@ func _on_health_changed(current: float, maximum: float) -> void:
 ## Своп оружия: старый ствол больше не источник патронов.
 func _on_weapon_changed(weapon: Node) -> void:
 	_disconnect(_weapon, "magazine_changed", _on_magazine_changed)
+	_disconnect(_weapon, "reload_started", _on_reload_started)
+	_disconnect(_weapon, "reload_finished", _on_reload_finished)
 	_weapon = weapon
 	_connect(_weapon, "magazine_changed", _on_magazine_changed)
+	_connect(_weapon, "reload_started", _on_reload_started)
+	_connect(_weapon, "reload_finished", _on_reload_finished)
 	if _weapon != null and _weapon.has_method("current_mag"):
 		_render_ammo(int(_weapon.call("current_mag")))
+	var reloading := false
+	if _weapon != null and _weapon.has_method("is_reloading"):
+		reloading = bool(_weapon.call("is_reloading"))
+	_render_reload(reloading)
 
 
 func _on_magazine_changed(current: int, _capacity: int) -> void:
@@ -155,6 +182,14 @@ func _on_magazine_changed(current: int, _capacity: int) -> void:
 
 func _on_points_changed(points: int) -> void:
 	_render_points(points)
+
+
+func _on_reload_started() -> void:
+	_render_reload(true)
+
+
+func _on_reload_finished() -> void:
+	_render_reload(false)
 
 
 # --------------------------------------------------------------------------
@@ -183,3 +218,14 @@ func _render_ammo(count: int) -> void:
 func _render_points(value: int) -> void:
 	if _points_label != null:
 		_points_label.text = str(value)
+
+
+func _render_reload(reloading: bool) -> void:
+	_is_reloading = reloading
+	if _reload_label != null:
+		_reload_label.visible = reloading
+
+
+## Публичный геттер для проверок и тестов: идёт ли сейчас перезарядка.
+func is_reloading() -> bool:
+	return _is_reloading

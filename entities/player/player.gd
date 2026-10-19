@@ -59,6 +59,7 @@ var _game_state: Node = null
 ## подключение урона — это проводка сцены, и сцена без хитбокса (лобби, отладочные
 ## макетки) обязана оставаться рабочей, а не падать в _ready().
 @onready var _hurtbox: Hurtbox = get_node_or_null("Hurtbox") as Hurtbox
+@onready var _ui: CanvasLayer = get_node_or_null("UI") as CanvasLayer
 
 
 func _ready() -> void:
@@ -239,7 +240,22 @@ func _disconnect_focus_recapture() -> void:
 		window.focus_entered.disconnect(_on_focus_entered)
 
 
+## Открыто ли в данный момент модальное окно интерфейса (инвентарь).
+func is_modal_active() -> bool:
+	if _ui != null and _ui.has_method("is_modal_open"):
+		if bool(_ui.call("is_modal_open")):
+			return true
+	var tree := get_tree()
+	if tree != null:
+		for node in tree.get_nodes_in_group("modal_ui"):
+			if node.has_method("is_open") and bool(node.call("is_open")):
+				return true
+	return false
+
+
 func _on_focus_entered() -> void:
+	if is_modal_active():
+		return
 	if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
@@ -314,6 +330,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _toggle_mouse_capture() -> void:
+	if is_modal_active():
+		return
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	else:

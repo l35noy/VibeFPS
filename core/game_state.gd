@@ -54,6 +54,15 @@ var owned_weapons: PackedStringArray = ["pistol"]
 var equipped_weapon_id: String = "pistol"
 var unlocked_locations: PackedStringArray = ["range"]
 
+## Задержка дебаунса автосохранения в секундах.
+## В бою очки копятся в памяти и сбрасываются на диск пачкой.
+## В headless-режиме по умолчанию 0.0 для быстрой синхронизации через call_deferred.
+@export var autosave_debounce_delay: float = 1.5
+
+var _save_dirty: bool = false
+var _save_debounce_timer: float = 0.0
+var _deferred_flush_pending: bool = false
+
 ## Подменяемый в тестах. Значение по умолчанию ставится в `_ready()`, а НЕ в
 ## `_init()`: при ручном `GameState.new()` + `add_child()` (сцена или тест без
 ## автозагрузки) `get_tree()` в `_init()` ещё null, и Callable указывал бы в
@@ -76,7 +85,14 @@ const _TEMP_DEV_STARTING_POINTS := 300
 var _temp_dev_grant_done: bool = false
 
 
+func _init() -> void:
+	if DisplayServer.get_name() == "headless":
+		autosave_debounce_delay = 0.0
+
+
 func _ready() -> void:
+	if DisplayServer.get_name() == "headless":
+		autosave_debounce_delay = 0.0
 	# Заполнить движковый переход, только если его никто не подменил. Дефолтный
 	# Callable невалиден, поэтому is_valid() отличает «не задан» от заглушки,
 	# присвоенной до входа в дерево.
@@ -84,10 +100,65 @@ func _ready() -> void:
 		scene_changer = Callable(get_tree(), "change_scene_to_file")
 	# Восстановление только при наличии SaveSystem: он появляется как автозагрузка
 	# в Task 6, а до тех пор состояние стартует с дефолтов.
-	var ss := get_node_or_null("/root/SaveSystem")
+	var ss := _get_save_system()
 	if ss != null:
 		_restore(ss.load_state())
 	_apply_temp_dev_starting_points()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		flush_save()
+
+
+func _physics_process(delta: float) -> void:
+	if not _save_dirty:
+		return
+	if autosave_debounce_delay <= 0.0:
+		flush_save()
+		return
+	_save_debounce_timer -= delta
+	if _save_debounce_timer <= 0.0:
+		flush_save()
+
+
+## Возвращает true, если имеются несохранённые на диск изменения состояния.
+func is_save_dirty() -> bool:
+	return _save_dirty
+
+
+## Немедленно записывает накопленное состояние на диск через SaveSystem,
+## если имеются несохранённые изменения (_save_dirty == true) или передан force == true.
+## Возвращает true при успешной записи или если изменений не требовалось.
+func flush_save(force: bool = false) -> bool:
+	_deferred_flush_pending = false
+	if not _save_dirty and not force:
+		return true
+	_save_dirty = false
+	_save_debounce_timer = 0.0
+	var ss := _get_save_system()
+	if ss != null and ss.has_method("save"):
+		return ss.save(_persist())
+	return false
+
+
+## Отложенный сброс автосохранения для headless-режима.
+func _deferred_flush() -> void:
+	if not _deferred_flush_pending:
+		return
+	_deferred_flush_pending = false
+	if autosave_debounce_delay <= 0.0:
+		flush_save()
+
+
+## Безопасный поиск SaveSystem в дереве сцены или главном цикле движка.
+func _get_save_system() -> SaveSystem:
+	if is_inside_tree():
+		return get_node_or_null("/root/SaveSystem") as SaveSystem
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null and tree.root != null:
+		return tree.root.get_node_or_null("SaveSystem") as SaveSystem
+	return null
 
 
 ## TEMP(dev): выдать 300 один раз за сессию. Только на живом дисплейсере:
@@ -152,7 +223,8 @@ func buy_weapon(id: String) -> bool:
 	equipped_weapon_id = id
 	points_changed.emit(points)
 	equipped_changed.emit(equipped_weapon_id)
-	_autosave()
+	_save_dirty = true
+	flush_save()
 	return true
 
 
@@ -162,7 +234,8 @@ func equip_weapon(id: String) -> bool:
 		return false
 	equipped_weapon_id = id
 	equipped_changed.emit(equipped_weapon_id)
-	_autosave()
+	_save_dirty = true
+	flush_save()
 	return true
 
 
@@ -173,6 +246,7 @@ func enter_location(id: String) -> bool:
 		return false
 	if not _LOCATION_SCENES.has(id):
 		return false
+	flush_save()
 	scene_changer.call(_LOCATION_SCENES[id])
 	return true
 
@@ -181,6 +255,7 @@ func enter_location(id: String) -> bool:
 ## («смерть», «выход из боя»), чтобы сигнатуру не пришлось менять задним числом.
 @warning_ignore("unused_parameter")
 func return_to_lobby(reason: String) -> void:
+	flush_save()
 	scene_changer.call("res://levels/lobby/lobby.tscn")
 
 
@@ -211,12 +286,18 @@ func _restore(saved: Dictionary) -> void:
 		unlocked_locations = _to_string_array(saved["unlocked_locations"])
 
 
-## Автосейв после каждого мутатора. Null-safe: без автозагрузки SaveSystem
-## сохранять некуда, и это не ошибка.
+## Отложенное автосохранение: помечает состояние «грязным» и запускает дебаунс-таймер.
+## В обычном режиме запись откладывается на autosave_debounce_delay (1.5 с),
+## чтобы не вызывать блокирующий дисковый ввод-вывод на 120 Гц физике при убийствах.
+## В headless-режиме сброс вызывается отложенно через call_deferred.
 func _autosave() -> void:
-	var ss := get_node_or_null("/root/SaveSystem")
-	if ss != null and ss.has_method("save"):
-		ss.save(_persist())
+	_save_dirty = true
+	if autosave_debounce_delay <= 0.0:
+		if not _deferred_flush_pending:
+			_deferred_flush_pending = true
+			call_deferred("_deferred_flush")
+	else:
+		_save_debounce_timer = autosave_debounce_delay
 
 
 ## Загрузка ресурса оружия по id. Пустой id или отсутствующий файл — null.

@@ -78,6 +78,12 @@ const _DEATH_LINGER := 0.2
 ## миллиметры после нормализации ничем не отличается от единицы, и враг дёргался
 ## бы на месте, никуда не идя.
 const _PATH_EPS := 0.001
+## Периодичность обновления целевой точки навигации (сек).
+## 0.1 с при 120 Гц означает ~10-12 обращений в NavigationServer в секунду вместо 120.
+const _NAV_UPDATE_INTERVAL: float = 0.1
+## Порог смещения игрока для немедленного пересчёта пути (метры).
+## 0.25 м в квадрате = 0.0625: при перемещении игрока цель корректируется без задержки.
+const _NAV_DISPLACEMENT_THRESHOLD_SQ: float = 0.25 * 0.25
 
 ## Гравитация берётся из настроек проекта, а не из player.gd: падение врага и
 ## падение игрока обязаны быть одной и той же величиной, иначе враг, поставленный
@@ -112,6 +118,14 @@ var _dying: bool = false
 var _death_timer: float = 0.0
 ## Личный экземпляр материала меша (см. _setup_material).
 var _material: StandardMaterial3D
+## Кэшированная ссылка на игрока для O(1) доступа без повторного опроса дерева.
+var _cached_player: Node3D = null
+## Последняя переданная NavigationAgent3D целевая точка пути.
+var _last_target_position: Vector3 = Vector3.INF
+## Таймер до следующего планового обновления пути.
+var _nav_update_timer: float = 0.0
+## Счётчик обновлений целевой точки навигации (для телеметрии и верификации).
+var _nav_updates_count: int = 0
 
 
 func _ready() -> void:
@@ -219,7 +233,7 @@ func _physics_process(delta: float) -> void:
 	# цель должна быть названа раньше, чем спросят путь; move_and_slide()
 	# закрывает кадр и применяет набранную скорость.
 	_apply_gravity(delta)
-	_steer_to_player()
+	_steer_to_player(delta)
 	_tick_contact(delta)
 	move_and_slide()
 
@@ -240,15 +254,24 @@ func _apply_gravity(delta: float) -> void:
 ## это не микроконтроль: скорость, оставшаяся от прошлого кадра, утащила бы
 ## врага по инерции после смерти цели (игрок вышел из группы, сменил сцену), и
 ## «стоит на месте» выглядело бы правдой только первые кадры после этого.
-func _steer_to_player() -> void:
+func _steer_to_player(delta: float = 0.0) -> void:
 	var target := _player()
 	if target == null or _agent == null or not is_alive():
 		velocity.x = 0.0
 		velocity.z = 0.0
 		return
-	# Цель переносится каждый тик, а не один раз при спавне: игрок ходит, и
-	# цель, названная однажды, через секунду указывала бы в пустоту.
-	_agent.target_position = target.global_position
+	_nav_update_timer += delta
+	var target_pos := target.global_position
+	var needs_nav_update: bool = _last_target_position == Vector3.INF \
+			or _nav_update_timer >= _NAV_UPDATE_INTERVAL \
+			or target_pos.distance_squared_to(_last_target_position) >= _NAV_DISPLACEMENT_THRESHOLD_SQ
+
+	if needs_nav_update:
+		_agent.target_position = target_pos
+		_last_target_position = target_pos
+		_nav_update_timer = 0.0
+		_nav_updates_count += 1
+
 	var direction := next_path_direction()
 	if direction == Vector3.ZERO:
 		velocity.x = 0.0
@@ -342,12 +365,16 @@ func _on_hurtbox_area_exited(area: Area3D) -> void:
 	_contact_accumulator = 0.0
 
 
-## Цель — игрок из группы "player" (решение 4). Один узел на группу: двух
-## игроков в бою не бывает, а поиск по узлам потребовал бы знать, чей это мир.
+## Цель — игрок из группы "player" (решение 4). Кэшируется в _cached_player
+## с проверкой валидности экземпляра, нахождения в дереве и принадлежности группе,
+## исключая избыточный опрос реестра дерева сцены на каждом тике 120 Гц.
 func _player() -> Node3D:
 	if not is_inside_tree():
 		return null
-	return get_tree().get_first_node_in_group("player") as Node3D
+	if is_instance_valid(_cached_player) and _cached_player.is_inside_tree() and _cached_player.is_in_group("player"):
+		return _cached_player
+	_cached_player = get_tree().get_first_node_in_group("player") as Node3D
+	return _cached_player
 
 
 ## Смерть. Порядок обязателен и противоположен привычному «сначала сообщить»:
@@ -358,6 +385,8 @@ func _die() -> void:
 	_dying = true
 	_contact_active = false
 	_contact_accumulator = 0.0
+	_last_target_position = Vector3.INF
+	_nav_update_timer = 0.0
 	velocity = Vector3.ZERO
 	_discolor()
 	_disable_collisions()

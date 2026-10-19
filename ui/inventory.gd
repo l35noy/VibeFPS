@@ -37,6 +37,7 @@ var _open: bool = false
 
 
 func _ready() -> void:
+	add_to_group("modal_ui")
 	visible = false
 	bind(_find_game_state())
 
@@ -97,6 +98,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	# курсоре. Поглощается, чтобы клавиша не дошла до сцены ниже по стеку.
 	if event.is_action_pressed("inventory"):
 		toggle()
+		var viewport := get_viewport()
+		if viewport != null:
+			viewport.set_input_as_handled()
+	elif event.is_action_pressed("pause") and _open:
+		# Закрытие инвентаря по Escape: поглощается, чтобы не переключать захват мыши в player.gd.
+		close()
 		var viewport := get_viewport()
 		if viewport != null:
 			viewport.set_input_as_handled()

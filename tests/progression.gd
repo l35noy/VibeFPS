@@ -102,6 +102,7 @@ func _initialize() -> void:
 	_test_enter_location()
 	_test_return_to_lobby()
 	await _test_autosave_roundtrip()
+	await _test_save_debounce_and_batching()
 
 	_save.clear_save()
 	_cleanup()
@@ -237,3 +238,66 @@ func _test_autosave_roundtrip() -> void:
 	_check(loaded.get("equipped_weapon_id") == "pistol",
 		"и сохраненное экипированное оружие корректно",
 		"(получено %s)" % loaded.get("equipped_weapon_id"))
+
+
+func _test_save_debounce_and_batching() -> void:
+	print("-- save debounce & batching: множественные award_points не вызывают синхронного I/O")
+	_save.clear_save()
+	_save.reset_save_count()
+	var test_gs := GameState.new()
+	root.add_child(test_gs)
+	await physics_frame
+
+	# 1. Проверка отсутствия синхронных блокирующих записей при множественных award_points
+	var initial_writes := _save.save_count
+	test_gs.award_points(10)
+	test_gs.award_points(20)
+	test_gs.award_points(30)
+	_check(_save.save_count == initial_writes,
+		"множественные award_points подряд не вызывают синхронных записей на диск",
+		"(записей %d)" % _save.save_count)
+	_check(test_gs.is_save_dirty(),
+		"состояние GameState помечено как dirty после начисления очков")
+	_check(test_gs.points == 60,
+		"очки корректно аккумулированы в памяти (60)", "(получено %d)" % test_gs.points)
+
+	# 2. Проверка принудительной фиксации состояния через flush_save()
+	var flushed := test_gs.flush_save()
+	_check(flushed, "flush_save() возвращает true при успешной фиксации")
+	_check(_save.save_count == initial_writes + 1,
+		"flush_save() выполнил ровно 1 запись на диск для накопленного пакета очков",
+		"(записей %d)" % _save.save_count)
+	_check(not test_gs.is_save_dirty(),
+		"после flush_save() состояние больше не dirty")
+	var disk_data := _save.load_state()
+	_check(int(disk_data.get("points", -1)) == 60,
+		"на диске зафиксированы все 60 очков", "(получено %s)" % disk_data.get("points"))
+
+	# 3. Повторный вызов flush_save() без изменений не производит лишних записей на диск
+	var second_flush := test_gs.flush_save()
+	_check(second_flush, "повторный flush_save() возвращает true")
+	_check(_save.save_count == initial_writes + 1,
+		"повторный flush_save() без dirty-состояния не производит повторной записи на диск",
+		"(записей %d)" % _save.save_count)
+
+	# 4. Проверка дебаунс-таймера (симуляция обычного игрового режима с задержкой 1.5 с)
+	test_gs.autosave_debounce_delay = 1.5
+	test_gs.award_points(40)
+	_check(test_gs.is_save_dirty(), "состояние снова dirty после award_points(40)")
+	# Ждем 1 кадр физики — при задержке 1.5 с запись на диск не должна происходить через 1 кадр
+	await physics_frame
+	_check(_save.save_count == initial_writes + 1,
+		"при активном дебаунс-таймере запись на диск не происходит на следующем физическом кадре",
+		"(записей %d)" % _save.save_count)
+	# Принудительный сброс через flush_save() фиксирует очки немедленно
+	test_gs.flush_save()
+	_check(_save.save_count == initial_writes + 2,
+		"flush_save() принудительно сбрасывает данные, не дожидаясь истечения таймера",
+		"(записей %d)" % _save.save_count)
+	var final_disk := _save.load_state()
+	_check(int(final_disk.get("points", -1)) == 100,
+		"на диске зафиксированы все 100 очков", "(получено %s)" % final_disk.get("points"))
+
+	root.remove_child(test_gs)
+	test_gs.free()
+

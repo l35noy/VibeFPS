@@ -47,18 +47,32 @@ class _FakePlayer extends Node:
 		weapon_changed.emit(weapon)
 
 
-## Заглушка оружия: magazine_changed и current_mag().
+## Заглушка оружия: magazine_changed, reload_started, reload_finished, current_mag() и is_reloading().
 class _FakeWeapon extends Node:
 	signal magazine_changed(current: int, capacity: int)
+	signal reload_started()
+	signal reload_finished()
 
 	var _mag: int = 0
+	var _reloading: bool = false
 
 	func current_mag() -> int:
 		return _mag
 
+	func is_reloading() -> bool:
+		return _reloading
+
 	func report_magazine(current: int, capacity: int) -> void:
 		_mag = current
 		magazine_changed.emit(current, capacity)
+
+	func start_reload() -> void:
+		_reloading = true
+		reload_started.emit()
+
+	func finish_reload() -> void:
+		_reloading = false
+		reload_finished.emit()
 
 
 ## Заглушка GameState: points_changed и поле points.
@@ -92,6 +106,7 @@ func _initialize() -> void:
 	await _test_scene_contract()
 	await _test_player_wiring()
 	await _test_binding()
+	await _test_reload_indication()
 	await _test_weapon_changed_rebinds()
 	await _test_null_safety()
 
@@ -117,10 +132,18 @@ func _test_scene_contract() -> void:
 	root.add_child(ui)
 	await physics_frame
 	_check(ui.has_method("bind"), "ui.gd предоставляет публичный метод bind(player, weapon, game_state)")
+	_check(ui.has_method("is_reloading"), "ui.gd предоставляет публичный метод is_reloading()")
+	_check(ui.has_method("is_modal_open"), "ui.gd предоставляет публичный метод is_modal_open()")
 	_check(ui.get_node_or_null("HealthLabel") is Label, "HealthLabel является Label")
 	_check(ui.get_node_or_null("HealthBar") is ProgressBar, "HealthBar является ProgressBar")
 	_check(ui.get_node_or_null("AmmoLabel") is Label, "AmmoLabel является Label")
 	_check(ui.get_node_or_null("PointsLabel") is Label, "PointsLabel является Label")
+	_check(ui.get_node_or_null("ReloadLabel") is Label, "ReloadLabel является Label")
+	var reload_label := ui.get_node_or_null("ReloadLabel") as Label
+	if reload_label != null:
+		_check(not reload_label.visible, "ReloadLabel изначально скрыт (visible = false)")
+		_check(reload_label.text == "ПЕРЕЗАРЯДКА...",
+			"ReloadLabel содержит текст 'ПЕРЕЗАРЯДКА...'", "(получено '%s')" % reload_label.text)
 	ui.queue_free()
 	await physics_frame
 
@@ -227,6 +250,57 @@ func _test_binding() -> void:
 	await physics_frame
 
 
+## Индикация перезарядки в HUD: reload_started и reload_finished управляют ReloadLabel.
+func _test_reload_indication() -> void:
+	print("-- индикация перезарядки: reload_started и reload_finished управляют ReloadLabel")
+	var packed: PackedScene = load(_UI_SCENE)
+	if packed == null:
+		_check(false, "res://ui/ui.tscn загружается (reload indication)")
+		return
+	var ui := packed.instantiate()
+	root.add_child(ui)
+	await physics_frame
+
+	var player := _FakePlayer.new()
+	var weapon := _FakeWeapon.new()
+	root.add_child(player)
+	root.add_child(weapon)
+
+	ui.call("bind", player, weapon, null)
+	var reload_label := ui.get_node_or_null("ReloadLabel") as Label
+	_check(reload_label != null, "ReloadLabel найден в сцене UI")
+	_check(not bool(ui.call("is_reloading")), "HUD изначально не в состоянии перезарядки")
+	if reload_label != null:
+		_check(not reload_label.visible, "ReloadLabel изначально скрыт")
+
+	weapon.start_reload()
+	_check(bool(ui.call("is_reloading")), "start_reload() переводит HUD в состояние перезарядки")
+	if reload_label != null:
+		_check(reload_label.visible, "ReloadLabel становится видимым при старте перезарядки")
+
+	weapon.finish_reload()
+	_check(not bool(ui.call("is_reloading")), "finish_reload() снимает состояние перезарядки в HUD")
+	if reload_label != null:
+		_check(not reload_label.visible, "ReloadLabel скрывается при окончании перезарядки")
+
+	# Проверка bind() когда оружие уже в процессе перезарядки
+	weapon.start_reload()
+	var ui2 := packed.instantiate()
+	root.add_child(ui2)
+	await physics_frame
+	ui2.call("bind", player, weapon, null)
+	var reload_label2 := ui2.get_node_or_null("ReloadLabel") as Label
+	_check(bool(ui2.call("is_reloading")), "bind() считывает идущую перезарядку из оружия на месте")
+	if reload_label2 != null:
+		_check(reload_label2.visible, "ReloadLabel сразу виден, если оружие перезаряжается при привязке")
+
+	ui2.queue_free()
+	ui.queue_free()
+	player.queue_free()
+	weapon.queue_free()
+	await physics_frame
+
+
 ## Смена оружия на игроке перенаправляет счётчик патронов на новое оружие.
 func _test_weapon_changed_rebinds() -> void:
 	print("-- weapon_changed переподключает счётчик патронов к новому оружию")
@@ -263,6 +337,18 @@ func _test_weapon_changed_rebinds() -> void:
 	second.report_magazine(2, 30)
 	_check(_label_text(ui, "AmmoLabel") == "2",
 		"а новое оружие корректно обновляет счётчик", "(получено %s)" % _label_text(ui, "AmmoLabel"))
+
+	# Проверка переподключения сигналов перезарядки
+	first.start_reload()
+	_check(not bool(ui.call("is_reloading")),
+		"старое оружие больше не передаёт сигналы перезарядки в HUD")
+
+	second.start_reload()
+	_check(bool(ui.call("is_reloading")),
+		"новое оружие передаёт сигнал старта перезарядки в HUD")
+	second.finish_reload()
+	_check(not bool(ui.call("is_reloading")),
+		"новое оружие передаёт сигнал окончания перезарядки в HUD")
 
 	ui.queue_free()
 	player.queue_free()
