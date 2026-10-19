@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## HUD harness for VibeFPS (Phase 3, Task 9): the on-player CanvasLayer that
 ## shows the player's health, the current weapon's magazine and the score.
@@ -13,8 +13,8 @@ extends SceneTree
 ## Run: godot --headless --path . --script res://tests/ui.gd
 ##      .\tools\run_checks.ps1 ui
 
-const _UI_SCENE := "res://ui.tscn"
-const _PLAYER_SCENE := "res://player.tscn"
+const _UI_SCENE := "res://ui/ui.tscn"
+const _PLAYER_SCENE := "res://entities/player/player.tscn"
 
 var _failures: PackedStringArray = []
 var _checks := 0
@@ -115,7 +115,7 @@ func _initialize() -> void:
 func _test_scene_contract() -> void:
 	print("-- ui.tscn contract")
 	var packed: PackedScene = load(_UI_SCENE)
-	_check(packed != null, "res://ui.tscn loads")
+	_check(packed != null, "res://ui/ui.tscn loads")
 	if packed == null:
 		return
 	var ui := packed.instantiate()
@@ -140,7 +140,7 @@ func _test_scene_contract() -> void:
 func _test_player_wiring() -> void:
 	print("-- player.tscn wiring: the HUD rides the player and starts filled")
 	var packed: PackedScene = load(_PLAYER_SCENE)
-	_check(packed != null, "res://player.tscn loads")
+	_check(packed != null, "res://entities/player/player.tscn loads")
 	if packed == null:
 		return
 	var player := packed.instantiate()
@@ -189,7 +189,7 @@ func _test_binding() -> void:
 	print("-- binding: health, ammo and points follow their signals")
 	var packed: PackedScene = load(_UI_SCENE)
 	if packed == null:
-		_check(false, "res://ui.tscn loads (binding)")
+		_check(false, "res://ui/ui.tscn loads (binding)")
 		return
 	var ui := packed.instantiate()
 	root.add_child(ui)
@@ -245,7 +245,7 @@ func _test_weapon_changed_rebinds() -> void:
 	print("-- weapon_changed re-binds the ammo counter to the new weapon")
 	var packed: PackedScene = load(_UI_SCENE)
 	if packed == null:
-		_check(false, "res://ui.tscn loads (weapon_changed)")
+		_check(false, "res://ui/ui.tscn loads (weapon_changed)")
 		return
 	var ui := packed.instantiate()
 	root.add_child(ui)
@@ -290,7 +290,7 @@ func _test_null_safety() -> void:
 	print("-- null safety: no player, no weapon, no game state")
 	var packed: PackedScene = load(_UI_SCENE)
 	if packed == null:
-		_check(false, "res://ui.tscn loads (null safety)")
+		_check(false, "res://ui/ui.tscn loads (null safety)")
 		return
 	var ui := packed.instantiate()
 	root.add_child(ui)

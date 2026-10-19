@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Inventory harness for VibeFPS (Phase 3, Task 10): the on-player inventory panel
 ## (physical I, buttons + mouse) and the player's weapon swap.
@@ -14,8 +14,8 @@ extends SceneTree
 ## Run: godot --headless --path . --script res://tests/inventory.gd
 ##      .\tools\run_checks.ps1 inventory
 
-const _UI_SCENE := "res://ui.tscn"
-const _PLAYER_SCENE := "res://player.tscn"
+const _UI_SCENE := "res://ui/ui.tscn"
+const _PLAYER_SCENE := "res://entities/player/player.tscn"
 
 var _failures: PackedStringArray = []
 var _checks := 0
@@ -278,7 +278,7 @@ func _test_weapon_swap() -> void:
 	_check(start != null, "the player holds a weapon on ready")
 	_check(_held_name(start) == "Pistol", "the pistol is held when it is equipped",
 		"(got %s)" % _held_name(start))
-	_check(start != null and start.scene_file_path == "res://pistol.tscn",
+	_check(start != null and start.scene_file_path == "res://weapons/pistol/pistol.tscn",
 		"and it comes from the pistol scene",
 		"(got %s)" % ("<none>" if start == null else start.scene_file_path))
 	var hand_position := (start as Node3D).position if start is Node3D else Vector3.ZERO
@@ -290,7 +290,7 @@ func _test_weapon_swap() -> void:
 	_check(swapped != start, "the slot node was replaced, not the same instance")
 	_check(_held_name(swapped) == "Auto", "the auto's own data is now in hand",
 		"(got %s)" % _held_name(swapped))
-	_check(swapped != null and swapped.scene_file_path == "res://auto.tscn",
+	_check(swapped != null and swapped.scene_file_path == "res://weapons/auto/auto.tscn",
 		"the auto scene occupies the slot",
 		"(got %s)" % ("<none>" if swapped == null else swapped.scene_file_path))
 	_check(swapped != null and swapped.name == "Pistol",

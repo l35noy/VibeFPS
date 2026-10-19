@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Auto-weapon harness for VibeFPS: the second weapon (an automatic pistol) is
 ## the same pistol.gd behaviour driven by a different WeaponData, so this check
@@ -17,7 +17,7 @@ extends SceneTree
 ##      .\tools\run_checks.ps1 auto_weapon
 
 ## Stand-in for pistol.gd, used only by this harness.
-class _PistolProbe extends "res://scripts/pistol.gd":
+class _PistolProbe extends "res://weapons/pistol/pistol.gd":
 	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
@@ -36,10 +36,10 @@ class _Log extends RefCounted:
 
 
 const _AUTO_DATA_PATH := "res://data/weapons/auto.tres"
-const _AUTO_SCENE_PATH := "res://auto.tscn"
+const _AUTO_SCENE_PATH := "res://weapons/auto/auto.tscn"
 ## The projectile scene auto.tscn points at, loaded rather than rebuilt: the
 ## trail under data-driven test is the trail the shipped scene really carries.
-const _PROJECTILE_SCENE_PATH := "res://projectile.tscn"
+const _PROJECTILE_SCENE_PATH := "res://weapons/projectile/projectile.tscn"
 
 ## The values the design fixes for the auto. Restated here so a balance edit to
 ## auto.tres cannot silently turn the harness into a check of numbers it does
@@ -260,7 +260,7 @@ func _test_scene_contract() -> void:
 	_check(direct.get("data") == _data,
 		"auto.tscn carries data = auto.tres")
 	_check(direct.get("projectile_scene") == _projectile_scene,
-		"auto.tscn drives res://projectile.tscn")
+		"auto.tscn drives res://weapons/projectile/projectile.tscn")
 	_check(direct.get("fire_rate_source") == null,
 		"auto.tscn leaves fire_rate_source empty: it aims from the camera")
 	var barrel := direct.get_node_or_null("Muzzle") as Node3D

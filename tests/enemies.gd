@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Enemy data harness for VibeFPS -- the first check of Phase 2.
 ##
@@ -16,7 +16,7 @@ extends SceneTree
 ## would sail through a check that only ever saw the good resource.
 ##
 ## Task 2 adds the second section, "Здоровье игрока". It loads the real
-## res://player.tscn and waits for is_node_ready() instead of assembling a player
+## res://entities/player/player.tscn and waits for is_node_ready() instead of assembling a player
 ## out of nodes: what is under test is the wiring stored in the scene file, and a
 ## harness that built the player itself would stay green with player.tscn
 ## carrying no Hurtbox at all. The damage is dealt through that scene's own
@@ -24,8 +24,8 @@ extends SceneTree
 ## rather than as two methods that happen to exist.
 ##
 ## Task 3 adds the third section, "Контактный враг". Same rule, one level deeper:
-## the enemy comes from res://enemy_contact.tscn and is hurt by the real
-## res://projectile.tscn, while only the world around it (floor, wall) is built
+## the enemy comes from res://entities/enemies/contact/enemy_contact.tscn and is hurt by the real
+## res://weapons/projectile/projectile.tscn, while only the world around it (floor, wall) is built
 ## in code. tests/projectile.gd cannot cover this: its world is made of nodes, so
 ## it proves nothing about the wiring stored in the enemy's scene file -- layers,
 ## hurtbox zone, data reference. Everything the enemy needs is read with call()/
@@ -35,7 +35,7 @@ extends SceneTree
 ## is missing.
 ##
 ## Task 4 appends the fourth section, "Навигация". The enemy still comes from
-## res://enemy_contact.tscn -- the NavigationAgent3D is read out of that scene
+## res://entities/enemies/contact/enemy_contact.tscn -- the NavigationAgent3D is read out of that scene
 ## instance, never built here -- while the world it walks through (floor, wall,
 ## NavigationRegion3D, target) is programmatic and baked at runtime with a
 ## synchronous bake_navigation_mesh(false). "Walked" is asserted the only honest
@@ -46,7 +46,7 @@ extends SceneTree
 ## it "walked" in a test that only watched a final position.
 ##
 ## Task 5 appends the fifth section, "Проводка сцены". Here the whole subject is
-## res://range.tscn, loaded and instantiated as the game loads it: the three
+## res://levels/range/range.tscn, loaded and instantiated as the game loads it: the three
 ## targets, the enemy, the player, the NavigationRegion3D and the script that
 ## bakes it. Nothing is rebuilt from nodes in code — that is the entire point.
 ## Phase 1 shipped the shooting range with no check at all (HANDOFF §8), so a
@@ -59,15 +59,15 @@ extends SceneTree
 ##      .\tools\run_checks.ps1 enemies
 
 const _CONTACT_PATH := "res://data/enemies/contact.tres"
-const _PLAYER_PATH := "res://player.tscn"
-const _ENEMY_PATH := "res://enemy_contact.tscn"
-const _PROJECTILE_PATH := "res://projectile.tscn"
-const _RANGE_PATH := "res://range.tscn"
+const _PLAYER_PATH := "res://entities/player/player.tscn"
+const _ENEMY_PATH := "res://entities/enemies/contact/enemy_contact.tscn"
+const _PROJECTILE_PATH := "res://weapons/projectile/projectile.tscn"
+const _RANGE_PATH := "res://levels/range/range.tscn"
 ## Скрипт корня тира. Имя файла проверяется строкой, а не поиском узла по
 ## поведению: bake — это правило проводки сцены, и если он уедет из range.tscn
 ## куда-то ещё, проверка должна назвать пропавший файл, а не просто «мир не
 ## запечёкся».
-const _RANGE_SCRIPT_PATH := "res://scripts/range_scene.gd"
+const _RANGE_SCRIPT_PATH := "res://levels/range/range_scene.gd"
 ## Слой 4 — enemy_hurtbox, слой 7 — player_hurtbox (project.godot, [layer_names]).
 ## Номера слоёв — битовые маски: слой N = 1 << (N - 1).
 const _LAYER_WORLD := 1 << 0
@@ -584,8 +584,8 @@ func _test_death_returns_to_lobby() -> void:
 	_check(spy != null and _packed_strings_eq(spy.lobby_reasons, ["death"]),
 		"смерть возвращает в лобби с причиной \"death\"",
 		"(получено %s)" % ("нет пробного GameState" if spy == null else str(spy.lobby_reasons)))
-	_check(_packed_strings_eq(_lobby_changes, ["res://lobby.tscn"]),
-		"смерть просит у scene_changer ровно res://lobby.tscn",
+	_check(_packed_strings_eq(_lobby_changes, ["res://levels/lobby/lobby.tscn"]),
+		"смерть просит у scene_changer ровно res://levels/lobby/lobby.tscn",
 		"(получено %s)" % str(_lobby_changes))
 	_check(_near(_health(player), 0.0),
 		"смерть НЕ респавнит на месте: здоровье остаётся 0.0, а не max_health",
@@ -1610,7 +1610,7 @@ func _frames_until_free(node: Node, cap: int) -> int:
 
 ## Пятый раздел: тир целиком, ровно так, как его грузит игра.
 ##
-## Предмет проверки здесь — файл `res://range.tscn`, а не отдельный узел: три
+## Предмет проверки здесь — файл `res://levels/range/range.tscn`, а не отдельный узел: три
 ## мишени, враг, игрок, `NavigationRegion3D` и скрипт корня, который его
 ## запекает. Сцена грузится через `load()` и инстанцируется как в игре, и
 ## ничего из этого не собирается кодом: харнесс, собравший тот же мир из

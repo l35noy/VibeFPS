@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Projectile harness for VibeFPS: the bullet, the hurtbox contract Phase 2
 ## builds enemies on, and the two rules that make the bullet a bullet -- a
@@ -35,8 +35,8 @@ extends SceneTree
 ##      .\tools\run_checks.ps1 projectile
 
 ## The scripts under test. Loaded by path; see the header.
-const _HURTBOX_SCRIPT_PATH := "res://scripts/hurtbox.gd"
-const _PROJECTILE_SCRIPT_PATH := "res://scripts/projectile.gd"
+const _HURTBOX_SCRIPT_PATH := "res://entities/common/hurtbox.gd"
+const _PROJECTILE_SCRIPT_PATH := "res://weapons/projectile/projectile.gd"
 
 ## Collision layers, as the bit values Godot stores them by. 1 << (n - 1).
 const _LAYER_WORLD := 1 << 0

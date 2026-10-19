@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## World integrity harness for VibeFPS.
 ##
@@ -27,7 +27,7 @@ extends SceneTree
 
 
 ## Stand-in for player.gd, used only by this harness.
-class _PlayerProbe extends "res://player.gd":
+class _PlayerProbe extends "res://entities/player/player.gd":
 	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
@@ -198,9 +198,9 @@ func _drop_autoloads() -> void:
 func _initialize() -> void:
 	print("=== VibeFPS world integrity test ===")
 	_drop_autoloads()
-	var packed: PackedScene = load("res://main.tscn")
+	var packed: PackedScene = load("res://levels/main/main.tscn")
 	if packed == null:
-		print("FATAL: cannot load res://main.tscn")
+		print("FATAL: cannot load res://levels/main/main.tscn")
 		quit(1)
 		return
 
@@ -464,8 +464,8 @@ func _test_fall_recovery(player: CharacterBody3D) -> void:
 	_check(_packed_strings_eq(spy.lobby_reasons, ["fall"]),
 		"падение возвращает в лобби с причиной \"fall\"",
 		"(получено %s)" % str(spy.lobby_reasons))
-	_check(_packed_strings_eq(_lobby_changes, ["res://lobby.tscn"]),
-		"падение просит у scene_changer ровно res://lobby.tscn",
+	_check(_packed_strings_eq(_lobby_changes, ["res://levels/lobby/lobby.tscn"]),
+		"падение просит у scene_changer ровно res://levels/lobby/lobby.tscn",
 		"(получено %s)" % str(_lobby_changes))
 	_check(_died_count == 1, "падение испускает died ровно один раз",
 		"(got %d)" % _died_count)

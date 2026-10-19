@@ -1,10 +1,10 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Diagnostics: inspect Environment settings and probe fall-out-of-world behaviour.
 
 func _initialize() -> void:
 	print("=== diagnostics ===")
-	var packed: PackedScene = load("res://main.tscn")
+	var packed: PackedScene = load("res://levels/main/main.tscn")
 	var world: Node3D = packed.instantiate()
 	root.add_child(world)
 	await physics_frame

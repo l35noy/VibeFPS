@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Movement harness for VibeFPS: locomotion, jumping, mouse look and input
 ## gating. Drives the real player node with simulated input and reports
@@ -20,7 +20,7 @@ extends SceneTree
 
 
 ## Stand-in for player.gd, used only by this harness.
-class _PlayerProbe extends "res://player.gd":
+class _PlayerProbe extends "res://entities/player/player.gd":
 	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 	## How many times player.gd asked to toggle the cursor capture.
@@ -128,9 +128,9 @@ func _mouse_motion_event(relative: Vector2) -> InputEventMouseMotion:
 
 func _initialize() -> void:
 	print("=== VibeFPS movement test ===")
-	var packed: PackedScene = load("res://main.tscn")
+	var packed: PackedScene = load("res://levels/main/main.tscn")
 	if packed == null:
-		print("FATAL: cannot load res://main.tscn")
+		print("FATAL: cannot load res://levels/main/main.tscn")
 		quit(1)
 		return
 
@@ -190,7 +190,7 @@ func _test_gate_harness(player: CharacterBody3D) -> void:
 		"precondition: headless really cannot capture the cursor",
 		"(mouse_mode=%d)" % Input.mouse_mode)
 
-	var stock: Node = (load("res://player.tscn") as PackedScene).instantiate()
+	var stock: Node = (load("res://entities/player/player.tscn") as PackedScene).instantiate()
 	_check(int(stock.call("_mouse_mode_for_play_input")) == Input.mouse_mode,
 		"player.gd gates on the engine's own Input.mouse_mode")
 	stock.free()
@@ -619,7 +619,7 @@ func _test_capture_toggle_binding(player: CharacterBody3D) -> void:
 ## have any InputEventMouseButton branch left to toggle capture.
 func _test_player_source_contract() -> void:
 	print("-- source contract: old capture wiring must stay out of player.gd")
-	var src := FileAccess.get_file_as_string("res://player.gd")
+	var src := FileAccess.get_file_as_string("res://entities/player/player.gd")
 	_check(src != "", "player.gd is readable", "(%d bytes)" % src.length())
 	_check(not src.contains("ui_cancel"),
 		"player.gd does not use the built-in ui_cancel action")

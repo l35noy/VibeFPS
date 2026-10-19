@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Scene integrity harness for VibeFPS.
 ## Verifies that main.tscn loads and carries the nodes and resources the rest
@@ -27,9 +27,9 @@ func _warn(label: String) -> void:
 
 func _initialize() -> void:
 	print("=== VibeFPS scene smoke test ===")
-	var packed: PackedScene = load("res://main.tscn")
+	var packed: PackedScene = load("res://levels/main/main.tscn")
 	if packed == null:
-		print("FATAL: cannot load res://main.tscn")
+		print("FATAL: cannot load res://levels/main/main.tscn")
 		quit(1)
 		return
 
@@ -91,8 +91,8 @@ func _test_sky_background(world: Node3D) -> void:
 ## Run last, and leave main.tscn's section above untouched.
 func _test_lobby() -> void:
 	print("-- lobby: scene assembly")
-	var packed: PackedScene = load("res://lobby.tscn")
-	_check(packed != null, "res://lobby.tscn loads")
+	var packed: PackedScene = load("res://levels/lobby/lobby.tscn")
+	_check(packed != null, "res://levels/lobby/lobby.tscn loads")
 	if packed == null:
 		return
 

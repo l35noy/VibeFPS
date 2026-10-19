@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/weapon_data.gd" id="1_script"]
+[ext_resource type="Script" path="res://weapons/weapon_data.gd" id="1_script"]
 
 ; Временный баланс владельца (2026-10-10): числа могут поменяться при финальной
 ; настройке. Машинно их читают оружейная сцена (auto.tscn) и тест

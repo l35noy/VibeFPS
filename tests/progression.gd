@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Progression harness for VibeFPS (Phase 3, lobby track A): points, buying and
 ## equipping weapons, unlocked locations, scene transitions and the autosave
@@ -207,8 +207,8 @@ func _test_enter_location() -> void:
 	print("-- enter_location: unlocked ids only, through the injected changer")
 	var entered := _gs.enter_location("range")
 	_check(entered, "entering the unlocked range succeeds")
-	_check(_packed_eq(_changed_to, ["res://range.tscn"]),
-		"the changer was asked for res://range.tscn", "(got %s)" % _changed_to)
+	_check(_packed_eq(_changed_to, ["res://levels/range/range.tscn"]),
+		"the changer was asked for res://levels/range/range.tscn", "(got %s)" % _changed_to)
 	var before := _changed_to.size()
 	_check(not _gs.enter_location("secret"), "a locked location is refused")
 	_check(_changed_to.size() == before,
@@ -218,8 +218,8 @@ func _test_enter_location() -> void:
 func _test_return_to_lobby() -> void:
 	print("-- return_to_lobby: back to the lobby through the changer")
 	_gs.return_to_lobby("death")
-	_check(_packed_eq(_changed_to, ["res://range.tscn", "res://lobby.tscn"]),
-		"the changer was then asked for res://lobby.tscn",
+	_check(_packed_eq(_changed_to, ["res://levels/range/range.tscn", "res://levels/lobby/lobby.tscn"]),
+		"the changer was then asked for res://levels/lobby/lobby.tscn",
 		"(got %s)" % _changed_to)
 
 

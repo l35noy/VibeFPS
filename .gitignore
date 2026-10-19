@@ -1,6 +1,64 @@
-# Godot 4+ specific ignores
+# ==============================================================================
+# Godot 4 Engine Artifacts
+# ==============================================================================
 .godot/
 /android/
 
-# Локальные настройки IDE (хранят путь к движку, в git не держим)
+# Godot export binaries & packages
+build/
+dist/
+bin/
+*.exe
+*.pck
+*.apk
+*.aab
+*.zip
+
+# Godot imported translations
+*.translation
+
+# ==============================================================================
+# User Data & Test Artifacts
+# ==============================================================================
+*.save
+*.tmp
+*.log
+crash_*.log
+vibefps_check_*
+
+# ==============================================================================
+# IDEs and Code Editors
+# ==============================================================================
+# VS Code
 .vscode/
+*.code-workspace
+
+# JetBrains / Rider / IDEA
+.idea/
+*.iml
+
+# Visual Studio
+.vs/
+*.sln
+*.csproj
+
+# Backup & swap files
+*.swp
+*.swo
+*~
+*.bak
+
+# ==============================================================================
+# Operating System Files
+# ==============================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes

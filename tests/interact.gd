@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Interaction harness for VibeFPS (Phase 3, lobby track A): the ShopPoint and
 ## DoorPoint interactables, the player's nearest_interactable() reach pick, and
@@ -28,7 +28,7 @@ extends SceneTree
 
 
 ## Stand-in for player.gd, used only by this harness.
-class _PlayerProbe extends "res://player.gd":
+class _PlayerProbe extends "res://entities/player/player.gd":
 	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
@@ -49,9 +49,9 @@ class _ShopLog extends RefCounted:
 
 ## Isolated path every interaction uses. user://save.json is never touched.
 const _TMP_PATH := "user://interact_test.json"
-const _PLAYER_SCENE := "res://player.tscn"
-const _SHOP_SCRIPT := "res://scripts/shop_point.gd"
-const _DOOR_SCRIPT := "res://scripts/door_point.gd"
+const _PLAYER_SCENE := "res://entities/player/player.tscn"
+const _SHOP_SCRIPT := "res://levels/lobby/shop_point.gd"
+const _DOOR_SCRIPT := "res://levels/lobby/door_point.gd"
 
 ## The reach the design fixes, restated here so a silent retune to 2.5 -- the
 ## value the brief explicitly overrules (R2: the shop at 3.0 m must be found,
@@ -333,8 +333,8 @@ func _test_door_transition() -> void:
 	print("-- door: entering the range goes through the scene changer")
 	var entered := _door.interact(_player)
 	_check(entered, "the door enters the unlocked range")
-	_check(_changed_to.size() > 0 and _changed_to[_changed_to.size() - 1] == "res://range.tscn",
-		"the changer was asked for res://range.tscn", "(got %s)" % _changed_to)
+	_check(_changed_to.size() > 0 and _changed_to[_changed_to.size() - 1] == "res://levels/range/range.tscn",
+		"the changer was asked for res://levels/range/range.tscn", "(got %s)" % _changed_to)
 
 
 ## The reach the brief overrules 2.5 with (R2): a shop at 3.0 m is inside 3.5 m

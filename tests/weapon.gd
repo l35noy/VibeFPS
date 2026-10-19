@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Weapon harness for VibeFPS: the pistol's magazine, its rate limit, its
 ## reload and the input gate around all three.
@@ -26,7 +26,7 @@ extends SceneTree
 ##      .\tools\run_checks.ps1 weapon
 
 ## Stand-in for pistol.gd, used only by this harness.
-class _PistolProbe extends "res://scripts/pistol.gd":
+class _PistolProbe extends "res://weapons/pistol/pistol.gd":
 	## Mouse mode the gate is evaluated against instead of Input.mouse_mode.
 	var gate_mouse_mode: int = Input.MOUSE_MODE_CAPTURED
 
@@ -67,12 +67,12 @@ class _Log extends RefCounted:
 		return float(reload_finished_at_ms - reload_started_at_ms) / 1000.0
 
 
-const _PISTOL_SCRIPT_PATH := "res://scripts/pistol.gd"
+const _PISTOL_SCRIPT_PATH := "res://weapons/pistol/pistol.gd"
 const _PISTOL_DATA_PATH := "res://data/weapons/pistol.tres"
 ## The shipped pistol, loaded rather than rebuilt. The barrel marker is scene
 ## wiring, and a marker the harness invents for itself would be a marker the
 ## game never loads.
-const _PISTOL_SCENE_PATH := "res://pistol.tscn"
+const _PISTOL_SCENE_PATH := "res://weapons/pistol/pistol.tscn"
 
 ## The values the design fixes for the pistol. They are restated here so a
 ## balance edit to pistol.tres cannot silently turn the harness into a check of

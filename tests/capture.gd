@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## Visual capture harness: runs main.tscn, simulates gameplay, saves viewport PNGs.
 ## Run (windowed, needed for real rendering):
@@ -14,7 +14,7 @@ var _log: Array[String] = []
 
 func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
-	var packed: PackedScene = load("res://main.tscn")
+	var packed: PackedScene = load("res://levels/main/main.tscn")
 	var world: Node3D = packed.instantiate()
 	root.add_child(world)
 	await process_frame
