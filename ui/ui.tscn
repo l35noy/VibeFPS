@@ -65,6 +65,38 @@ theme_override_font_sizes/font_size = 24
 text = "0"
 horizontal_alignment = 2
 
+[node name="WaveLabel" type="Label" parent="."]
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 24.0
+offset_right = 200.0
+offset_bottom = 64.0
+theme_override_font_sizes/font_size = 26
+horizontal_alignment = 1
+
+[node name="BossContainer" type="VBoxContainer" parent="."]
+visible = false
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -250.0
+offset_top = 70.0
+offset_right = 250.0
+offset_bottom = 115.0
+
+[node name="BossLabel" type="Label" parent="BossContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "БОСС: ГЕОМЕТРИЧЕСКИЙ КОЛОСС"
+horizontal_alignment = 1
+
+[node name="BossBar" type="ProgressBar" parent="BossContainer"]
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+max_value = 300.0
+value = 300.0
+show_percentage = false
+
 [node name="InventoryPanel" type="Control" parent="."]
 visible = false
 anchor_right = 1.0
@@ -89,3 +121,83 @@ offset_left = 40.0
 offset_top = 96.0
 offset_right = 440.0
 offset_bottom = 96.0
+
+[node name="DefeatPanel" type="Control" parent="."]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Background" type="ColorRect" parent="DefeatPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.75)
+
+[node name="VBox" type="VBoxContainer" parent="DefeatPanel"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -100.0
+offset_right = 200.0
+offset_bottom = 100.0
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="DefeatPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.2, 0.2, 1)
+theme_override_font_sizes/font_size = 40
+text = "ВЫ ПОГИБЛИ"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="DefeatPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Накопленные очки и оружие сохранены."
+horizontal_alignment = 1
+
+[node name="LobbyButton" type="Button" parent="DefeatPanel/VBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "ВЕРНУТЬСЯ В ЛОББИ"
+
+[node name="VictoryPanel" type="Control" parent="."]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Background" type="ColorRect" parent="VictoryPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.75)
+
+[node name="VBox" type="VBoxContainer" parent="VictoryPanel"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -110.0
+offset_right = 250.0
+offset_bottom = 110.0
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="VictoryPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.9, 0.4, 1)
+theme_override_font_sizes/font_size = 40
+text = "ЛОКАЦИЯ ЗАЧИЩЕНА!"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="VictoryPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Все 4 волны отражены. Награда: +500 очков."
+horizontal_alignment = 1
+
+[node name="LobbyButton" type="Button" parent="VictoryPanel/VBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "ВЕРНУТЬСЯ В ЛОББИ"

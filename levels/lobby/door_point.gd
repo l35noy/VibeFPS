@@ -22,4 +22,6 @@ func interact(player: Node) -> bool:
 	var gs := get_node_or_null("/root/GameState") as GameState
 	if gs == null:
 		return false
+	if location_id == "arena_01" and not ("arena_01" in gs.unlocked_locations):
+		gs.unlock_location("arena_01")
 	return gs.enter_location(location_id)

@@ -31,16 +31,32 @@ var _is_reloading: bool = false
 @onready var _ammo_label: Label = get_node_or_null("AmmoLabel") as Label
 @onready var _points_label: Label = get_node_or_null("PointsLabel") as Label
 @onready var _inventory_panel: Control = get_node_or_null("InventoryPanel") as Control
+@onready var _wave_label: Label = get_node_or_null("WaveLabel") as Label
+@onready var _boss_container: Control = get_node_or_null("BossContainer") as Control
+@onready var _boss_label: Label = get_node_or_null("BossContainer/BossLabel") as Label
+@onready var _boss_bar: ProgressBar = get_node_or_null("BossContainer/BossBar") as ProgressBar
+@onready var _defeat_panel: Control = get_node_or_null("DefeatPanel") as Control
+@onready var _defeat_btn: Button = get_node_or_null("DefeatPanel/VBox/LobbyButton") as Button
+@onready var _victory_panel: Control = get_node_or_null("VictoryPanel") as Control
+@onready var _victory_btn: Button = get_node_or_null("VictoryPanel/VBox/LobbyButton") as Button
 
 
 func _ready() -> void:
 	bind(_find_player(), _find_weapon(), _find_game_state())
+	if _defeat_btn != null and not _defeat_btn.pressed.is_connected(_on_defeat_return_pressed):
+		_defeat_btn.pressed.connect(_on_defeat_return_pressed)
+	if _victory_btn != null and not _victory_btn.pressed.is_connected(_on_victory_return_pressed):
+		_victory_btn.pressed.connect(_on_victory_return_pressed)
 
 
-## Открыто ли какое-либо модальное окно интерфейса (инвентарь).
+## Открыто ли какое-либо модальное окно интерфейса (инвентарь, экран поражения, экран победы).
 func is_modal_open() -> bool:
-	if _inventory_panel != null and _inventory_panel.has_method("is_open"):
-		return bool(_inventory_panel.call("is_open"))
+	if _inventory_panel != null and _inventory_panel.has_method("is_open") and bool(_inventory_panel.call("is_open")):
+		return true
+	if _defeat_panel != null and _defeat_panel.visible:
+		return true
+	if _victory_panel != null and _victory_panel.visible:
+		return true
 	return false
 
 
@@ -229,3 +245,66 @@ func _render_reload(reloading: bool) -> void:
 ## Публичный геттер для проверок и тестов: идёт ли сейчас перезарядка.
 func is_reloading() -> bool:
 	return _is_reloading
+
+
+# --------------------------------------------------------------------------
+# волны, босс и экраны победы/поражения (Фаза 4)
+# --------------------------------------------------------------------------
+
+func set_wave(current: int, total: int) -> void:
+	if _wave_label != null:
+		_wave_label.text = "ВОЛНА %d / %d" % [current, total]
+
+
+func set_intermission(time_left: float) -> void:
+	if _wave_label != null:
+		var seconds := int(ceil(time_left))
+		_wave_label.text = "СЛЕДУЮЩАЯ ВОЛНА ЧЕРЕЗ: %d С" % seconds
+
+
+func clear_wave_display() -> void:
+	if _wave_label != null:
+		_wave_label.text = ""
+
+
+func show_boss_bar(boss_name: String, current: float, maximum: float) -> void:
+	if _boss_container != null:
+		_boss_container.visible = true
+	if _boss_label != null and not boss_name.is_empty():
+		_boss_label.text = "БОСС: %s" % boss_name.to_upper()
+	update_boss_health(current, maximum)
+
+
+func update_boss_health(current: float, maximum: float) -> void:
+	if _boss_bar != null:
+		_boss_bar.max_value = maxf(maximum, 1.0)
+		_boss_bar.value = clampf(current, 0.0, maxf(maximum, 1.0))
+
+
+func hide_boss_bar() -> void:
+	if _boss_container != null:
+		_boss_container.visible = false
+
+
+func show_defeat() -> void:
+	if _defeat_panel != null:
+		_defeat_panel.visible = true
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+func show_victory() -> void:
+	if _victory_panel != null:
+		_victory_panel.visible = true
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+func _on_defeat_return_pressed() -> void:
+	var gs := get_node_or_null("/root/GameState") as GameState
+	if gs != null:
+		gs.return_to_lobby("death")
+
+
+func _on_victory_return_pressed() -> void:
+	var gs := get_node_or_null("/root/GameState") as GameState
+	if gs != null:
+		gs.return_to_lobby("victory")

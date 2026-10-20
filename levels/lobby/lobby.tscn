@@ -66,6 +66,12 @@ size = Vector3(1.6, 2.8, 0.07607422)
 albedo_color = Color(0.478, 0.294, 0.157, 1)
 metallic_specular = 0.0
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_door_arena"]
+albedo_color = Color(0.2, 0.5, 0.85, 1)
+emission_enabled = true
+emission = Color(0.1, 0.35, 0.7, 1)
+metallic_specular = 0.0
+
 [sub_resource type="BoxShape3D" id="BoxShape3D_door"]
 size = Vector3(1.8, 3, 0.8)
 
@@ -159,6 +165,20 @@ mesh = SubResource("BoxMesh_door")
 surface_material_override/0 = SubResource("StandardMaterial3D_door")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="DoorPoint" unique_id=1353886473]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -0.091272354)
+shape = SubResource("BoxShape3D_door")
+
+[node name="DoorArena01" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, -17.5)
+script = ExtResource("5_door_script")
+location_id = "arena_01"
+
+[node name="Mesh" type="MeshInstance3D" parent="DoorArena01"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0.03162384)
+mesh = SubResource("BoxMesh_door")
+surface_material_override/0 = SubResource("StandardMaterial3D_door_arena")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DoorArena01"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -0.091272354)
 shape = SubResource("BoxShape3D_door")
 

@@ -29,16 +29,20 @@ signal points_changed(points: int)
 ## поле каждый кадр. Испускается из `equip_weapon` и из ветки покупки
 ## `buy_weapon` — там, где `equipped_weapon_id` реально меняется.
 signal equipped_changed(weapon_id: String)
+## Разблокирована новая локация в лобби (Фаза 4).
+signal location_unlocked(location_id: String)
 
 const POINTS_PER_KILL := 10
 const POINTS_PER_WAVE := 50
 const POINTS_PER_CLEAR := 500
 
 ## id локации -> сцена. Приватный: наружу торчит только enter_location(id).
-## "range" — временный бой через дверь лобби; настоящая локация появится в
-## Фазе 4, и тогда карта вырастет, а вызывающий код не изменится.
+## "range" — мини-тир лобби; "arena_01" — первая боевая локация Фазы 4.
 const _LOCATION_SCENES := {
 	"range": "res://levels/range/range.tscn",
+	"arena_01": "res://levels/arena_01/arena_01.tscn",
+	"arena_02": "res://levels/arena_01/arena_01.tscn",
+	"lobby": "res://levels/lobby/lobby.tscn",
 }
 
 ## id оружия -> сцена, которую игрок держит в руках. Единый источник «id → файл»
@@ -70,20 +74,6 @@ var _deferred_flush_pending: bool = false
 ## заполняет значение только если его никто не задал (см. там же).
 var scene_changer: Callable
 
-## TEMP(dev): разовая выдача стартового капитала, чтобы владелец мог сразу
-## проверить покупку автомата за 300. Убирается отдельной задачей — это НЕ
-## баланс и НЕ часть контракта класса: дефолт `points` остаётся 0, а тесты и
-## headless-прогон ничего не получают (гейт по имени дисплейсера ниже). Заодно
-## защищены две вещи, которые иначе сломались бы: `tests/progression.gd`
-## (`points start at 0`/`STARTING_POINTS`) и проверка автосейва в тест-прогоне
-## (user://save.json в headless не создаётся, потому что выдача не срабатывает).
-const _TEMP_DEV_STARTING_POINTS := 300
-## Выдача ровно один раз за сессию, а не на каждом входе в лобби. Флаг на
-## экземпляре: GameState — автозагрузка, и её `_ready()` выполняется один раз на
-## процесс, но флаг оставляет намерение явным и защищает от ручного повторного
-## входа, если это когда-нибудь понадобится.
-var _temp_dev_grant_done: bool = false
-
 
 func _init() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -103,7 +93,6 @@ func _ready() -> void:
 	var ss := _get_save_system()
 	if ss != null:
 		_restore(ss.load_state())
-	_apply_temp_dev_starting_points()
 
 
 func _notification(what: int) -> void:
@@ -159,23 +148,6 @@ func _get_save_system() -> SaveSystem:
 	if tree != null and tree.root != null:
 		return tree.root.get_node_or_null("SaveSystem") as SaveSystem
 	return null
-
-
-## TEMP(dev): выдать 300 один раз за сессию. Только на живом дисплейсере:
-## `--headless` не должен ни менять очки (это сломало бы проверки старта), ни
-## вызывать автосейв (он создал бы user://save.json в тест-прогоне). Проверка
-## через max() означает, что уже большее значение (восстановленный сейв) не
-## понижается. Сигнал испускается, потому что это изменение points.
-func _apply_temp_dev_starting_points() -> void:
-	if _temp_dev_grant_done:
-		return
-	_temp_dev_grant_done = true
-	if DisplayServer.get_name() == "headless":
-		return
-	if points >= _TEMP_DEV_STARTING_POINTS:
-		return
-	points = _TEMP_DEV_STARTING_POINTS
-	points_changed.emit(points)
 
 
 ## Цена оружия из его ресурса. Нет файла или битый ресурс — 0: витрина должна
@@ -239,9 +211,24 @@ func equip_weapon(id: String) -> bool:
 	return true
 
 
+## Разблокировать новую локацию в лобби (Фаза 4: зачистка локации).
+func unlock_location(id: String) -> bool:
+	if id in unlocked_locations:
+		return false
+	if not _LOCATION_SCENES.has(id):
+		return false
+	unlocked_locations.append(id)
+	location_unlocked.emit(id)
+	_autosave()
+	return true
+
+
 ## Вход в локацию только из открытых и только на известную сцену; иначе отказ
 ## БЕЗ смены сцены.
 func enter_location(id: String) -> bool:
+	if id == "lobby":
+		return_to_lobby("door")
+		return true
 	if not (id in unlocked_locations):
 		return false
 	if not _LOCATION_SCENES.has(id):

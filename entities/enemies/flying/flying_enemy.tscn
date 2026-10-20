@@ -1,0 +1,41 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://entities/enemies/flying/flying_enemy.gd" id="1_flying_script"]
+[ext_resource type="Resource" path="res://data/enemies/flying.tres" id="2_flying_data"]
+[ext_resource type="Script" path="res://entities/common/hurtbox.gd" id="3_hurtbox_script"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_flying_body"]
+radius = 0.5
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_flying_hurtbox"]
+radius = 0.55
+
+[sub_resource type="PrismMesh" id="PrismMesh_flying"]
+size = Vector3(1.0, 0.7, 1.0)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flying"]
+albedo_color = Color(0.2, 0.6, 0.9, 1)
+metallic_specular = 0.0
+
+[node name="FlyingEnemy" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("1_flying_script")
+data = ExtResource("2_flying_data")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_flying_body")
+
+[node name="Hurtbox" type="Area3D" parent="."]
+script = ExtResource("3_hurtbox_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hurtbox"]
+shape = SubResource("SphereShape3D_flying_hurtbox")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0)
+mesh = SubResource("PrismMesh_flying")
+material_override = SubResource("StandardMaterial3D_flying")
+
+[node name="Muzzle" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.6)
