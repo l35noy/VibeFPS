@@ -239,9 +239,9 @@ func _test_wave_manager_progression() -> void:
 	print("-- Раздел 4: Прогрессия волн и начисление наград WaveManager")
 
 	var wm := WaveManager.new()
+	_check(wm.intermission_duration == 5.0, "длительность передышки по умолчанию 5.0 с (R7)", "(получено %.1f)" % wm.intermission_duration)
 	wm.auto_start = false
 	wm.spawn_interval = 0.01
-	wm.intermission_duration = 5.0
 	root.add_child(wm)
 	await _physics_frames(2)
 
@@ -305,7 +305,8 @@ func _test_wave_manager_progression() -> void:
 	_check(_location_cleared_count == 1, "сигнал location_cleared испущен при завершении волны 4")
 	_check(_game_state.points == points_before_clear + 500, "за зачистку локации начислено 500 очков", "(очки: %d)" % _game_state.points)
 	_check(wm.get_state() == WaveManager.State.CLEARED, "состояние WaveManager перешло в CLEARED")
-	_check("arena_02" in _game_state.unlocked_locations, "следующая локация arena_02 разблокирована в GameState")
+	_check(not ("arena_02" in _game_state.unlocked_locations), "несуществующая локация arena_02 не разблокируется и не ломает состояние")
+	_check("arena_01" in _game_state.unlocked_locations, "стартовая локация arena_01 доступна в GameState")
 
 	wm.queue_free()
 	await _physics_frames(2)
@@ -349,7 +350,10 @@ func _test_arena_scene_wiring() -> void:
 	var portal := arena.get_node_or_null("ExitPortal") as DoorPoint
 	_check(portal != null, "в сцене арены есть ExitPortal (DoorPoint)")
 	if portal != null:
-		_check(int(portal.collision_layer) == _LAYER_INTERACTABLE, "портал выхода на слое 6 (interactable)")
+		_check(int(portal.collision_layer) == 0, "до зачистки портал выхода деактивирован (слой 0)")
+		if wm != null:
+			wm.location_cleared.emit()
+		_check(int(portal.collision_layer) == _LAYER_INTERACTABLE, "после зачистки портал выхода активен на слое 6 (interactable)")
 		_check(portal.location_id == "lobby", "портал настроен на возврат в лобби (location_id == \"lobby\")")
 
 	# Укрытия

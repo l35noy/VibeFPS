@@ -50,8 +50,8 @@ res://
 │   ├── player/            # Сцена игрока, player.gd, материалы тела
 │   ├── enemies/           # Враги (подпапки по видам: contact, flying, boss)
 │   └── common/            # Общие компоненты сущностей (hurtbox.gd)
-├── weapons/               # Оружие, снаряды и контроллеры (подпапки: pistol, auto, projectile)
-├── levels/                # Локации и арены (lobby, range, локации Фазы 4+)
+├── weapons/               # Оружие, снаряды и контроллеры (подпапки: pistol, auto, shotgun, projectile)
+├── levels/                # Локации и арены (lobby, arena_01, common)
 ├── ui/                    # Интерфейс, HUD, панели инвентаря
 ├── data/                  # Ресурсы параметров .tres (data/weapons/, data/enemies/)
 ├── tests/                 # Автоматические тесты сцен и подсистем

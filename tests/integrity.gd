@@ -178,16 +178,16 @@ func _drop_autoloads() -> void:
 func _initialize() -> void:
 	print("=== VibeFPS: тест целостности мира ===")
 	_drop_autoloads()
-	var packed: PackedScene = load("res://levels/main/main.tscn")
+	var packed: PackedScene = load("res://levels/arena_01/arena_01.tscn")
 	if packed == null:
-		print("КРИТИЧЕСКАЯ ОШИБКА: не удалось загрузить res://levels/main/main.tscn")
+		print("КРИТИЧЕСКАЯ ОШИБКА: не удалось загрузить res://levels/arena_01/arena_01.tscn")
 		quit(1)
 		return
 
 	var world: Node3D = packed.instantiate()
 	var player: CharacterBody3D = world.get_node_or_null("Player") as CharacterBody3D
 	if player == null:
-		print("КРИТИЧЕСКАЯ ОШИБКА: узел Player не найден в main.tscn")
+		print("КРИТИЧЕСКАЯ ОШИБКА: узел Player не найден в arena_01.tscn")
 		quit(1)
 		return
 
@@ -222,7 +222,7 @@ func _initialize() -> void:
 ## регрессию слоёв, раньше не было).
 ##
 ## Слои объявлены в [layer_names] project.godot (1 world, 2 player_body и т.д.)
-## и расставлены на игровых телах, но ничто не мешает при правке main.tscn или
+## и расставлены на игровых телах, но ничто не мешает при правке arena_01.tscn или
 ## player.tscn молча вернуть их к значениям по умолчанию. Такие регрессии не
 ## рушат существующие проверки явно: сдвиг слоя пола с 1 на 2, например, тихо
 ## ломает урон и снаряды (игрок с маской 1 перестаёт видеть пол), а проверка
@@ -238,10 +238,10 @@ func _test_collision_layers(world: Node3D, player: CharacterBody3D) -> void:
 			break
 		await physics_frame
 	_check(world.is_node_ready(),
-		"предусловие: main.tscn инстанцирована и готова (is_node_ready)")
+		"предусловие: arena_01.tscn инстанцирована и готова (is_node_ready)")
 
-	var floor_body := world.get_node_or_null("Floor") as StaticBody3D
-	_check(floor_body != null, "предусловие: узел Floor (StaticBody3D) существует в main.tscn")
+	var floor_body := world.find_child("Floor") as StaticBody3D
+	_check(floor_body != null, "предусловие: узел Floor (StaticBody3D) существует в arena_01.tscn")
 	if floor_body == null:
 		return
 	_check(floor_body.collision_layer == _LAYER_WORLD,
@@ -305,7 +305,15 @@ func _test_kill_plane_quiet_on_edge_fall(player: CharacterBody3D) -> void:
 	print("-- ordinary fall: обычное падение с края платформы не должно триггерить kill plane преждевременно")
 	_set_gate_mode(player, Input.MOUSE_MODE_CAPTURED)
 
-	player.global_position = Vector3(-9.0, _STAND_Y, 0.0)
+	# Временно отключаем коллизию восточной стены для схода с края пола arena_01 (x=22)
+	var world := player.get_parent()
+	var wall_east := world.find_child("WallEast") as StaticBody3D if world != null else null
+	var prev_wall_layer := 1
+	if wall_east != null:
+		prev_wall_layer = wall_east.collision_layer
+		wall_east.collision_layer = 0
+
+	player.global_position = Vector3(3.0, _STAND_Y, 0.0)
 	player.velocity = Vector3.ZERO
 	await _physics_frames(15)
 	_check(player.is_on_floor(), "предусловие: игрок стоит на полу",
@@ -326,12 +334,15 @@ func _test_kill_plane_quiet_on_edge_fall(player: CharacterBody3D) -> void:
 		min_y = minf(min_y, pos.y)
 		max_step = maxf(max_step, pos.distance_to(prev))
 		prev = pos
-		if pos.x > 10.0:
+		if pos.x > 22.0:
 			left_the_platform = true
 		if left_the_platform and pos.y < _OFF_PLATFORM_Y - 1.0:
 			break
 	Input.action_release("sprint")
 	Input.action_release("move_right")
+
+	if wall_east != null:
+		wall_east.collision_layer = prev_wall_layer
 
 	var end := player.global_position
 	var travelled := _xz_distance(player, start)

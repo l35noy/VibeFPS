@@ -124,16 +124,16 @@ func _mouse_motion_event(relative: Vector2) -> InputEventMouseMotion:
 
 func _initialize() -> void:
 	print("=== VibeFPS: тест перемещения и гейта ввода ===")
-	var packed: PackedScene = load("res://levels/main/main.tscn")
+	var packed: PackedScene = load("res://levels/arena_01/arena_01.tscn")
 	if packed == null:
-		print("КРИТИЧЕСКАЯ ОШИБКА: не удалось загрузить res://levels/main/main.tscn")
+		print("КРИТИЧЕСКАЯ ОШИБКА: не удалось загрузить res://levels/arena_01/arena_01.tscn")
 		quit(1)
 		return
 
 	var world: Node3D = packed.instantiate()
 	var player: CharacterBody3D = world.get_node_or_null("Player") as CharacterBody3D
 	if player == null:
-		print("КРИТИЧЕСКАЯ ОШИБКА: узел Player не найден в main.tscn")
+		print("КРИТИЧЕСКАЯ ОШИБКА: узел Player не найден в arena_01.tscn")
 		quit(1)
 		return
 

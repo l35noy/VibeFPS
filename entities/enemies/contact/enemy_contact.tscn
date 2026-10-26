@@ -3,63 +3,47 @@
 [ext_resource type="Script" path="res://entities/enemies/contact/enemy_contact.gd" id="1_script"]
 [ext_resource type="Resource" path="res://data/enemies/contact.tres" id="2_data"]
 [ext_resource type="Script" path="res://entities/common/hurtbox.gd" id="3_hurtbox"]
+[ext_resource type="Material" path="res://levels/common/inverted_hull_material.tres" id="4_material"]
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
-radius = 0.4
-height = 1.8
+[sub_resource type="BoxShape3D" id="BoxShape3D_body"]
+size = Vector3(1, 1, 1)
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_hurtbox"]
-radius = 0.4
-height = 1.8
+[sub_resource type="BoxShape3D" id="BoxShape3D_hurtbox"]
+size = Vector3(1, 1, 1)
 
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_enemy"]
-radius = 0.4
-height = 1.8
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_enemy"]
-albedo_color = Color(0.8, 0.25, 0.25, 1)
+[sub_resource type="BoxMesh" id="BoxMesh_enemy"]
+size = Vector3(1, 1, 1)
 
 [node name="ContactEnemy" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 5
 script = ExtResource("1_script")
 data = ExtResource("2_data")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
-shape = SubResource("CapsuleShape3D_body")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+shape = SubResource("BoxShape3D_body")
 
 [node name="Hurtbox" type="Area3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+collision_layer = 8
+collision_mask = 64
 script = ExtResource("3_hurtbox")
 detects_contact = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Hurtbox"]
-shape = SubResource("CapsuleShape3D_hurtbox")
+shape = SubResource("BoxShape3D_hurtbox")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
-mesh = SubResource("CapsuleMesh_enemy")
-material_override = SubResource("StandardMaterial3D_enemy")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("BoxMesh_enemy")
+material_override = ExtResource("4_material")
 
 ; Два числа, и путать их опасно: это РАЗНЫЕ пороги с разными смыслами.
 ;   path_desired_distance = 1.0 — «следующая точка пути засчитана пройденной,
-;     можно брать следующую». Остаётся дефолтом движка. От него зависит
-;     РАЗМОРОЗКА врага, и размораживает его не он, а смещение навмеша:
-;     запечённая поверхность лежит на 2 * cell_height выше геометрии, пока это
-;     смещение меньше порога, индекс точки пути не сдвигается никогда и враг
-;     стоит при вполне достижимом навмеше. Порог стоит оставить ЗАПАСОМ больше
-;     любого cell_height, который встретится в сценах (у тира 0.25 → 0.5).
+;     можно брать следующую». Остаётся дефолтом движка.
 ;   target_desired_distance = 0.5 — «до цели достаточно близко, можно
-;     останавливаться». Вот это число задаёт РАДИУС, на котором враг встаёт у
-;     игрока, и поэтому оно не может быть дефолтом 1.0: контактный урон ловится
-;     пересечением двух хитбоксов (спека §6.3 — тела проходят друг сквозь
-;     друга, касание ловится зонами), а у капсул врага и игрока радиус 0.4 м,
-;     то есть касание начинается строго ближе 0.8 м. При стоп-дистанции 1.0 м
-;     враг доходил до игрока, останавливался в метре и молчал: навмеш есть, путь
-;     пройден, здоровье игрока полно, и это неотличимо от «враг стоит и думает».
-;     Замер в тире: 720 тиков (6 с) вплотную — ноль тиков контакта, HP игрока
-;     100.0 из 100.0. 0.5 м даёт запас 0.3 м до границы касания.
-;     Неравенство «стоп-дистанция < сумма радиусов хитбоксов» проверяется в
-;     tests/enemies.gd: в «Проводке сцены» (враг в тире) и здесь, пином на 0.5.
+;     останавливаться».
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
 path_desired_distance = 1.0
 target_desired_distance = 0.5

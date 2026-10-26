@@ -1,6 +1,15 @@
-[gd_resource type="StandardMaterial3D" format=3]
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://co0kpwxbap0gt"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_outline"]
+cull_mode = 1
+shading_mode = 0
+albedo_color = Color(0, 0, 0, 1)
+grow = true
+grow_amount = 0.025
 
 [resource]
 resource_name = "PlayerBodyMaterial"
-albedo_color = Color(0.82, 0.82, 0.82, 1)
+next_pass = SubResource("StandardMaterial3D_outline")
+albedo_color = Color(0.92, 0.92, 0.94, 1)
 metallic_specular = 0.0
+roughness = 0.9

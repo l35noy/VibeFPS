@@ -7,7 +7,11 @@ extends Area3D
 ## локация, и уходит в смену сцены через подменяемый scene_changer.
 
 ## Какую локацию открывает эта дверь (id из GameState._LOCATION_SCENES).
-@export var location_id: String = "range"
+@export var location_id: String = "arena_01"
+
+
+func _init() -> void:
+	add_to_group("interactable")
 
 
 func _ready() -> void:
@@ -15,6 +19,14 @@ func _ready() -> void:
 	collision_mask = 1 << 1
 	monitoring = true
 	add_to_group("interactable")
+
+
+func get_interaction_prompt() -> String:
+	if location_id == "arena_01":
+		return "Войти в Арену 01"
+	elif location_id == "lobby":
+		return "Вернуться в лобби"
+	return "Войти"
 
 
 @warning_ignore("unused_parameter")

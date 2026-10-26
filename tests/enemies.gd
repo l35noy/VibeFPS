@@ -25,8 +25,8 @@ extends SceneTree
 ## Раздел 4: «Навигация». Проверяет перемещение врага по NavigationRegion3D к цели,
 ## скорость движения и остановку на заданной дистанции.
 ##
-## Раздел 5: «Проводка сцены». Проверяет тир res://levels/range/range.tscn,
-## инициализацию навигационной сетки, наличие целей, врага и игрока.
+## Раздел 5: «Проводка сцены». Проверяет боевую арену res://levels/arena_01/arena_01.tscn,
+## инициализацию навигационной сетки, слои мира, игрока, WaveManager и ExitPortal.
 ##
 ## Запуск:
 ##   godot --headless --path . --script res://tests/enemies.gd
@@ -37,15 +37,11 @@ const _CONTACT_PATH := "res://data/enemies/contact.tres"
 const _PLAYER_PATH := "res://entities/player/player.tscn"
 const _ENEMY_PATH := "res://entities/enemies/contact/enemy_contact.tscn"
 const _PROJECTILE_PATH := "res://weapons/projectile/projectile.tscn"
-const _RANGE_PATH := "res://levels/range/range.tscn"
-## Скрипт корня тира. Имя файла проверяется строкой, а не поиском узла по
-## поведению: bake — это правило проводки сцены, и если он уедет из range.tscn
-## куда-то ещё, проверка должна назвать пропавший файл, а не просто «мир не
-## запечёкся».
-const _RANGE_SCRIPT_PATH := "res://levels/range/range_scene.gd"
+const _ARENA_PATH := "res://levels/arena_01/arena_01.tscn"
 ## Слой 4 — enemy_hurtbox, слой 7 — player_hurtbox (project.godot, [layer_names]).
 ## Номера слоёв — битовые маски: слой N = 1 << (N - 1).
 const _LAYER_WORLD := 1 << 0
+const _LAYER_PLAYER_BODY := 1 << 1
 const _LAYER_ENEMY_BODY := 1 << 2
 const _LAYER_ENEMY_HURTBOX := 1 << 3
 const _LAYER_PLAYER_HURTBOX := 1 << 6
@@ -1731,288 +1727,79 @@ func _frames_until_free(node: Node, cap: int) -> int:
 
 
 # --------------------------------------------------------------------------
-# Task 5: проводка тира
+# Task 5: проводка боевой арены arena_01
 # --------------------------------------------------------------------------
 
-## Пятый раздел: тир целиком, ровно так, как его грузит игра.
+## Пятый раздел: арена arena_01 целиком, ровно так, как её грузит игра.
 ##
-## Предмет проверки здесь — файл `res://levels/range/range.tscn`, а не отдельный узел: три
-## мишени, враг, игрок, `NavigationRegion3D` и скрипт корня, который его
-## запекает. Сцена грузится через `load()` и инстанцируется как в игре, и
-## ничего из этого не собирается кодом: харнесс, собравший тот же мир из
-## узлов, остался бы зелёным на тире без навмеша вообще. Это и есть открытый
-## пункт HANDOFF §8 («у range.tscn нет проверки»), который закрывает раздел.
-##
-## Наблюдение за врагом — часть раздела, а не украшение. Полигоны в навмеше и
-## зелёные слои ничего не говорят о том, дойдёт ли враг до игрока: bake без
-## геометрии под регионом даёт сетку без полигонов, агент без пути стоит на
-## месте, и все статические утверждения выше были бы зелёными на мёртвом тире.
-func _test_range_scene_wiring() -> void:
-	print("-- Проводка сцены (Task 5)")
+## Проверяет проводку сцены res://levels/arena_01/arena_01.tscn:
+## NavigationRegion3D с запечённым навмешем (polygons > 0), пол и препятствия на слое 1 (world),
+## игрока со слоем тела 2 и хитбоксом 7, WaveManager и портал возврата в лобби ExitPortal.
+func _test_arena_scene_wiring() -> void:
+	print("-- Проводка сцены arena_01.tscn (Section 5)")
 
-	var packed: PackedScene = load(_RANGE_PATH)
+	var packed: PackedScene = load(_ARENA_PATH)
 	if packed == null:
-		_bail("не удалось загрузить %s" % _RANGE_PATH)
+		_bail("не удалось загрузить %s" % _ARENA_PATH)
 		return
-	var range_root := packed.instantiate()
-	if not await _spawn_and_wait(range_root):
-		_bail("%s так и не стал node-ready" % _RANGE_PATH)
+	var arena_root := packed.instantiate() as Node3D
+	if not await _spawn_and_wait(arena_root):
+		_bail("%s так и не стал node-ready" % _ARENA_PATH)
 		return
-	_check(range_root.is_node_ready(), "предусловие: range.tscn успешно создан и готов (is_node_ready)")
+	_check(arena_root.is_node_ready(), "предусловие: arena_01.tscn успешно создан и готов (is_node_ready)")
 
-	print("-- скрипт корня тира и bake навмеша")
-	var root_script := range_root.get_script() as Script
-	_check(root_script != null and str(root_script.resource_path) == _RANGE_SCRIPT_PATH,
-		"корень range.tscn несёт скрипт scripts/range_scene.gd: bake живёт в сцене, а не в тесте",
-		"(got \"%s\")" % ("none" if root_script == null else str(root_script.resource_path)))
-	var region := range_root.get_node_or_null("NavigationRegion3D") as NavigationRegion3D
-	_check(region != null, "в range.tscn есть узел NavigationRegion3D",
-		"(got %s)" % ("none" if region == null else str(region.name)))
-	# Пол под регионом, а не рядом с ним: режим парсинга по умолчанию
-	# (SOURCE_GEOMETRY_ROOT_NODE_CHILDREN) читает геометрию только из потомков
-	# региона. Пол-сосед даёт bake без единого полигона, и тир выглядит целым,
-	# пока идти некуда.
-	_check(region != null and region.get_node_or_null("Floor") != null,
-		"пол тира лежит ПОД NavigationRegion3D — bake читает только потомков региона",
-		"(got %s)" % ("нет Floor под регионом" if region != null else "нет региона"))
+	print("-- навмеш арены NavigationRegion3D")
+	var region := arena_root.get_node_or_null("NavigationRegion3D") as NavigationRegion3D
+	_check(region != null, "в arena_01.tscn есть узел NavigationRegion3D")
 	var nav_mesh: NavigationMesh = null if region == null else region.navigation_mesh as NavigationMesh
 	var polygons := 0 if nav_mesh == null else nav_mesh.get_polygon_count()
-	_check(polygons > 0,
-		"bake навмеша тира удался: navigation_mesh.get_polygon_count() > 0",
-		"(got %d полигонов)" % polygons)
+	_check(polygons > 0, "навмеш арены успешно запечён (polygons > 0)", "(получено %d полигонов)" % polygons)
 
-	print("-- три мишени тира: тело на слое 3, хитбокс на слое 4")
-	var targets: Array[Node] = []
-	_collect_by_script(range_root, "RangeTarget", targets)
-	_check(targets.size() == 3, "в range.tscn ровно три мишени RangeTarget",
-		"(got %d: %s)" % [targets.size(), str(_node_names(targets))])
-	for target in targets:
-		var body := target as CollisionObject3D
-		_check(int(body.collision_layer) == _LAYER_ENEMY_BODY,
-			"тело мишени слой 3 (%s)" % str(target.name),
-			"(got %d, expected %d)" % [int(body.collision_layer), _LAYER_ENEMY_BODY])
-		var hurtbox := target.get_node_or_null("Hurtbox") as Hurtbox
-		_check(hurtbox != null and int(hurtbox.collision_layer) == _LAYER_ENEMY_HURTBOX,
-			"хитбокс мишени слой 4 (%s)" % str(target.name),
-			"(got %s)" % ("нет узла Hurtbox" if hurtbox == null
-				else "%d, expected %d" % [int(hurtbox.collision_layer), _LAYER_ENEMY_HURTBOX]))
+	print("-- статические объекты на слое 1 (world)")
+	var floor_node := arena_root.find_child("Floor") as CollisionObject3D
+	_check(floor_node != null and int(floor_node.collision_layer) == _LAYER_WORLD,
+		"узел Floor находится на слое 1 (world)")
 
-	print("-- враг в тире: сцена, данные и слои")
-	var enemies: Array[Node] = []
-	_collect_by_script(range_root, "ContactEnemy", enemies)
-	_check(enemies.size() == 1, "в range.tscn ровно один враг ContactEnemy",
-		"(got %d: %s)" % [enemies.size(), str(_node_names(enemies))])
-	var enemy: Node3D = enemies[0] as Node3D if enemies.size() > 0 else null
-	var enemy_data := enemy.get("data") as EnemyData if enemy != null else null
-	_check(enemy_data != null and str(enemy_data.resource_path) == _CONTACT_PATH,
-		"враг тира использует дефолтный res://data/enemies/contact.tres",
-		"(got \"%s\")" % ("none" if enemy_data == null else str(enemy_data.resource_path)))
-	var enemy_body := enemy as CharacterBody3D
-	_check(enemy_body != null, "корень врага в тире — CharacterBody3D",
-		"(got %s)" % ("none" if enemy_body == null else type_string(typeof(enemy))))
-	_check(enemy_body != null and int(enemy_body.collision_layer) == _LAYER_ENEMY_BODY,
-		"тело врага в тире лежит на слое 3 (enemy_body)",
-		"(got %s)" % ("no enemy" if enemy_body == null
-			else "%d, expected %d" % [int(enemy_body.collision_layer), _LAYER_ENEMY_BODY]))
-	_check(enemy_body != null
-			and int(enemy_body.collision_mask) == (_LAYER_WORLD | _LAYER_ENEMY_BODY),
-		"маска тела врага в тире — слои 1 и 3: мир и свои",
-		"(got %s)" % ("no enemy" if enemy_body == null else "%d, expected %d" % [
-			int(enemy_body.collision_mask), (_LAYER_WORLD | _LAYER_ENEMY_BODY)]))
-	var enemy_hurtbox := enemy.get_node_or_null("Hurtbox") as Hurtbox if enemy != null else null
-	# Агент читается из СЦЕНЫ, а не подставляется: без него тир с врагом без
-	# навигации «проверялся» бы зелёным набором «проверять нечего».
-	var agent := enemy.get_node_or_null("NavigationAgent3D") as NavigationAgent3D if enemy != null else null
-	_check(agent != null, "у врага в тире есть дочерний узел NavigationAgent3D",
-		"(got %s)" % ("none" if agent == null else str(agent.name)))
-	_check(enemy_hurtbox != null and bool(enemy_hurtbox.monitoring),
-		"хитбокс врага в тире обнаруживает: monitoring == true (контакт ловит враг, спека 6.3)")
-	_check(enemy_hurtbox != null and int(enemy_hurtbox.collision_layer) == _LAYER_ENEMY_HURTBOX,
-		"хитбокс врага в тире лежит на слое 4 (enemy_hurtbox)",
-		"(got %s)" % ("нет узла Hurtbox" if enemy_hurtbox == null
-			else "%d, expected %d" % [int(enemy_hurtbox.collision_layer), _LAYER_ENEMY_HURTBOX]))
+	var obstacles: Array[String] = ["Cover1", "Cover2", "Cover3", "Cover4", "WallNorth", "WallSouth", "WallWest", "WallEast"]
+	for obs_name in obstacles:
+		var obs := arena_root.find_child(obs_name) as CollisionObject3D
+		_check(obs != null and int(obs.collision_layer) == _LAYER_WORLD,
+			"препятствие %s находится на слое 1 (world)" % obs_name)
 
-	print("-- игрок в тире: хитбокс на слое 7")
-	var player := range_root.get_node_or_null("Player") as Node3D
-	_check(player != null, "в range.tscn есть узел Player",
-		"(got %s)" % ("нет узла Player" if player == null
-			else "%s, экземпляр %s" % [str(player.name), player.get_class()]))
-	var players_in_group := get_nodes_in_group("player")
-	_check(players_in_group.size() == 1 and players_in_group[0] == player,
-		"предусловие: в группе \"player\" ровно игрок тира — цель врага определена однозначно",
-		"(в группе %d узлов)" % players_in_group.size())
-	var player_hurtbox := player.get_node_or_null("Hurtbox") as Hurtbox if player != null else null
-	_check(player_hurtbox != null and int(player_hurtbox.collision_layer) == _LAYER_PLAYER_HURTBOX,
-		"хитбокс игрока в тире лежит на слое 7 (player_hurtbox)",
-		"(got %s)" % ("нет узла Hurtbox" if player_hurtbox == null
-			else "%d, expected %d" % [int(player_hurtbox.collision_layer), _LAYER_PLAYER_HURTBOX]))
+	print("-- игрок в арене: тело на слое 2, хитбокс на слое 7")
+	var player := arena_root.get_node_or_null("Player") as CharacterBody3D
+	_check(player != null, "в arena_01.tscn есть узел Player")
+	if player != null:
+		_check(int(player.collision_layer) == _LAYER_PLAYER_BODY,
+			"тело игрока на слое 2 (player_body)", "(получено %d)" % int(player.collision_layer))
+		var player_hurtbox := player.get_node_or_null("Hurtbox") as Hurtbox
+		_check(player_hurtbox != null and int(player_hurtbox.collision_layer) == _LAYER_PLAYER_HURTBOX,
+			"хитбокс игрока на слое 7 (player_hurtbox)",
+			"(получено %s)" % ("нет хитбокса" if player_hurtbox == null else str(int(player_hurtbox.collision_layer))))
 
-	print("-- ствол пистолета в тире: снаряд стартует из Muzzle, а не из камеры")
-	# pistol.gd читает точку старта снаряда из узла Muzzle. Нет узла — и
-	# _spawn_point() молча откатывается на прицел: пули снова вылетают из глаза,
-	# тир при этом цел и все статические проверки выше зелёные. Поэтому
-	# отсутствие маркера должно быть видно здесь, а не игроку в бою.
-	var pistol := player.get_node_or_null("Pistol") as Node3D if player != null else null
-	var muzzle_marker := pistol.get_node_or_null("Muzzle") as Node3D if pistol != null else null
-	_check(muzzle_marker != null,
-		"у Pistol в тире есть узел Muzzle — точка старта снаряда",
-		"(got %s)" % ("нет узла Pistol у игрока" if pistol == null
-			else "у Pistol нет узла Muzzle"))
+	print("-- менеджер волн WaveManager и точки спавна")
+	var wm := arena_root.get_node_or_null("WaveManager") as WaveManager
+	_check(wm != null, "в арене присутствует узел WaveManager")
+	if wm != null:
+		_check(wm.spawn_points.size() >= 4,
+			"у WaveManager настроено не менее 4 точек спавна",
+			"(получено %d)" % wm.spawn_points.size())
 
-	print("-- враг стоит в дальнем углу, а не на игроке")
-	var start_distance := -1.0
-	if enemy_body != null and player != null:
-		start_distance = enemy_body.global_position.distance_to(player.global_position)
-	_check(start_distance >= _RANGE_MIN_START_DISTANCE,
-		"враг в тире не ближе %.1f м к игроку (бриф: дальний угол)" % _RANGE_MIN_START_DISTANCE,
-		"(got %.3f м)" % start_distance)
+	print("-- портал выхода ExitPortal в лобби")
+	var portal := arena_root.get_node_or_null("ExitPortal") as DoorPoint
+	_check(portal != null, "в arena_01.tscn есть ExitPortal (DoorPoint)")
+	if portal != null:
+		_check(int(portal.collision_layer) == 0,
+			"до зачистки ExitPortal деактивирован (collision_layer == 0)")
+		if wm != null:
+			wm.location_cleared.emit()
+		_check(int(portal.collision_layer) == (1 << 5),
+			"после зачистки ExitPortal активируется на слое 6 (interactable)", "(получено %d)" % int(portal.collision_layer))
+		_check(portal.location_id == "lobby",
+			"ExitPortal настроен на возврат в лобби (location_id == \"lobby\")",
+			"(получено \"%s\")" % portal.location_id)
 
-	print("-- правило ширины хитбоксов (глобальное решение 1)")
-	var hurtboxes: Array[Node] = []
-	_collect_by_script(range_root, "Hurtbox", hurtboxes)
-	_check(hurtboxes.size() > 0, "в range.tscn есть хитбоксы — ширину которых проверяем",
-		"(got %d: %s)" % [hurtboxes.size(), str(_node_names(hurtboxes))])
-	for node in hurtboxes:
-		var hurt := node as Hurtbox
-		var shape_node := hurt.get_node_or_null("CollisionShape3D") as CollisionShape3D if hurt != null else null
-		var shape := shape_node.shape if shape_node != null else null
-		_check(_hurtbox_width(shape) >= _HURTBOX_MIN_WIDTH,
-			"хитбокс не уже %.1f м (%s)" % [_HURTBOX_MIN_WIDTH, str(node.name)],
-			"(got %s)" % ("нет CollisionShape3D" if shape == null
-				else "%s = %.3f м" % [shape.get_class(), _hurtbox_width(shape)]))
-
-	print("-- запас навмеша против заморозки агента")
-	# Правило из Task 4, вынесенное в проверку: запечённая поверхность навмеша
-	# лежит на 2 * cell_height выше геометрии, а первая точка пути — это позиция
-	# агента, привязанная к сетке, то есть ровно на этом смещении выше пяток.
-	# Пока смещение не меньше path_desired_distance, агент не считает точку
-	# достигнутой и индекс пути не сдвигается никогда: навмеш есть, путь есть,
-	# враг стоит. Порог живёт в сцене врага, смещение — в навмеше тира, и
-	# разъехаться они могут молча, поэтому условие проверяется здесь, где оба
-	# числа видны.
-	var cell_height := 0.0 if nav_mesh == null else float(nav_mesh.get("cell_height"))
-	var path_desired := 0.0 if agent == null else float(agent.get("path_desired_distance"))
-	_check(cell_height > 0.0 and path_desired > 0.0 and 2.0 * cell_height < path_desired,
-		"смещение навмеша (2 * cell_height) меньше path_desired_distance агента — враг не замрёт",
-		"(got 2 * %.3f = %.3f м при пороге %.3f м)" % [cell_height, 2.0 * cell_height, path_desired])
-
-	print("-- враг доходит до игрока на расстояние касания")
-	# Контактный урон ловится ПЕРЕСЕЧЕНИЕМ двух хитбоксов (спека §6.3: тела
-	# проходят друг сквозь друга, касание ловится зонами), то есть когда центры
-	# капсул ближе, чем сумма их радиусов. Агент при этом останавливается на
-	# target_desired_distance от цели. Если стоп-дистанция больше радиуса
-	# контакта, враг доходит до игрока, останавливается в полуметре и молча
-	# стоит: навмеш есть, путь пройден, здоровье игрока полно, и ни один
-	# статический список утверждений этого не покажет. Проверка арифметическая
-	# и потому не зависит от того, как быстро враг успел дойти.
-	var enemy_reach := _hurtbox_reach(_hurtbox_shape(enemy_hurtbox))
-	var player_reach := _hurtbox_reach(_hurtbox_shape(player_hurtbox))
-	var stop_at := 0.0 if agent == null else float(agent.get("target_desired_distance"))
-	var contact_reach := enemy_reach + player_reach
-	_check(enemy_reach > 0.0 and player_reach > 0.0 and stop_at < contact_reach,
-		"стоп-дистанция врага меньше радиуса контакта двух хитбоксов — контактный урон возможен",
-		"(got %.3f м при радиусе контакта %.3f м = %.3f + %.3f)" % [
-			stop_at, contact_reach, enemy_reach, player_reach])
-
-	print("-- враг из тира идёт к игроку по запечённому навмешу")
-	if enemy_body == null or player == null or players_in_group.size() != 1:
-		print("  (движение оценивать нельзя без врага и игрока тира: проверки ниже пропущены)")
-	else:
-		# Карта навигации обновляется в начале физического шага, а bake тира
-		# заканчивается в _ready() корня сцены. Без паузы после готовности
-		# первый запрос пути ушёл бы в ещё пустую карту.
-		await _physics_frames(_RANGE_SETTLE_TICKS)
-		# Дистанция старта в дальнем углу (>15 м) уже подтверждена статической проверкой выше.
-		# Для теста навигации и контакта перемещаем врага на рабочую дистанцию 3.5 м по линии к игроку:
-		# это доказывает навигацию, движение и контакт без 13 секунд ожидания прохода через пустой тир.
-		var dir := (enemy_body.global_position - player.global_position).normalized()
-		enemy_body.global_position = player.global_position + dir * 3.5
-		enemy_body.velocity = Vector3.ZERO
-		await _physics_frames(5)
-		var settle_distance := enemy_body.global_position.distance_to(player.global_position)
-		# Окно прохода — по тому же правилу, что у мирового мира (Task 4), но
-		# длиной маршрута здесь служит замеренная дистанция до игрока: угол
-		# обхода задан мишенями тира, а не этим харнессом, и выводить его из
-		# геометрии сцены — значит дублировать сцену в проверке.
-		var range_ticks := int(ceil(settle_distance / _NAV_DESIGN_SPEED * _NAV_ROUTE_SAFETY
-			* float(_TICKS_PER_SECOND)))
-		print("    дистанция %.3f м, окно прохода %d тиков (%.2f с) при %.1f м/с" % [
-			settle_distance, range_ticks, float(range_ticks) / float(_TICKS_PER_SECOND),
-			_NAV_DESIGN_SPEED])
-		var end_distance := settle_distance
-		var moving_frames := 0
-		var airborne_frames := 0
-		var arrived_at := -1
-		# Первый тик контакта ищется ВНУТРИ окна прохода, а не отдельным окном
-		# после него: «дошёл и ударил» — одно наблюдение, и разрыв между двумя
-		# окнами оставлял бы щель, в которой враг мог бы дойти, ударить и
-		# разойтись, а проверка об этом не узнала бы.
-		var player_max := float(player.get("max_health"))
-		var health_before := _health(player)
-		var first_contact_tick := -1
-		var contact_ticks := 0
-		for i in range_ticks:
-			await physics_frame
-			var speed := Vector2(enemy_body.velocity.x, enemy_body.velocity.z).length()
-			if speed > _NAV_MOVING_EPS:
-				moving_frames += 1
-			if not enemy_body.is_on_floor():
-				airborne_frames += 1
-			end_distance = enemy_body.global_position.distance_to(player.global_position)
-			if arrived_at < 0 and end_distance <= stop_at + _NAV_ARRIVAL_MARGIN:
-				arrived_at = i
-			var current := _health(player)
-			if not _near(current, health_before):
-				contact_ticks += 1
-				health_before = current
-				if first_contact_tick < 0:
-					first_contact_tick = i
-			if arrived_at >= 0 and first_contact_tick >= 0 and contact_ticks >= 2:
-				break
-		print("    дистанция %.3f -> %.3f м за %d тиков, движущихся кадров %d, вне пола %d, дошёл на тике %d" % [
-			settle_distance, end_distance, range_ticks, moving_frames, airborne_frames, arrived_at])
-		_check(moving_frames >= _RANGE_MIN_MOVING_FRAMES,
-			"враг из тира реально шёл: не менее %d кадров со скоростью выше %.1f м/с" % [
-				_RANGE_MIN_MOVING_FRAMES, _NAV_MOVING_EPS],
-			"(got %d из %d)" % [moving_frames, range_ticks])
-		_check(airborne_frames == 0, "враг из тира всю дорогу шёл по полу, а не падал в пустоту",
-			"(кадров вне пола %d)" % airborne_frames)
-		# Как и в мировом мире — утверждение о маршруте, а не о скорости: за
-		# выведенное окно враг обязан дойти до стоп-дистанции агента.
-		_check(end_distance <= stop_at + _NAV_ARRIVAL_MARGIN,
-			"за окно в %.2f с (%.2f м маршрута при %.1f м/с) враг тира дошёл до игрока" % [
-				float(range_ticks) / float(_TICKS_PER_SECOND), settle_distance, _NAV_DESIGN_SPEED],
-			"(%.3f -> %.3f м; стоп-дистанция %.3f м, допуск %.2f м; дошёл на тике %d из %d)" % [
-				settle_distance, end_distance, stop_at, _NAV_ARRIVAL_MARGIN, arrived_at, range_ticks])
-		_check(first_contact_tick >= 0,
-			"враг из тира ДОХОДИТ до игрока и нанёс контактный урон — здоровье игрока упало",
-			"(за %d тиков (%.2f с) ни одного тика; дошёл на тике %d, первый тик контакта на тике %d, тиков %d, HP игрока %.1f из %.1f)" % [
-				range_ticks, float(range_ticks) / float(_TICKS_PER_SECOND), arrived_at,
-				first_contact_tick, contact_ticks, _health(player), player_max])
-		_check(enemy.has_method("is_alive") and bool(enemy.call("is_alive")),
-			"враг тира дожил до конца маршрута — целью был узел группы, а не хитбокс")
-
-		print("-- враг, дошедший до игрока, продолжает бить касанием")
-		# Наблюдение, а не вычисление: арифметика радиуса контакта выше говорит,
-		# что касание возможно, а здесь видно, что тики продолжаются после
-		# прихода. Игрок в харнессе неподвижен (headless не отдаёт ввод), враг
-		# стоит у него — и тиков не будет никогда, если стоп-дистанция велика.
-		health_before = _health(player)
-		var still_ticking := -1
-		for i in _RANGE_CONTACT_TICKS:
-			await physics_frame
-			if not _near(_health(player), health_before):
-				still_ticking = i
-				break
-		print("    следующий тик контакта на кадре %d из %d, HP игрока %.1f из %.1f" % [
-			still_ticking, _RANGE_CONTACT_TICKS, _health(player), player_max])
-		_check(still_ticking >= 0,
-			"после прихода тики контакта продолжаются: окно в %.1f с перекрывает каденцию %.1f с" % [
-				float(_RANGE_CONTACT_TICKS) / float(_TICKS_PER_SECOND), _RANGE_CONTACT_INTERVAL],
-			"(за %d тиков ни одного тика; HP игрока %.1f из %.1f)" % [
-				_RANGE_CONTACT_TICKS, _health(player), player_max])
-
-	range_root.queue_free()
+	arena_root.queue_free()
 	await physics_frame
 
 
@@ -2139,7 +1926,7 @@ func _initialize() -> void:
 	await _test_kill_awards_points()
 	await _test_enemy_optimization()
 	await _test_enemy_navigation()
-	await _test_range_scene_wiring()
+	await _test_arena_scene_wiring()
 
 	if _bailed:
 		# _bail() уже напечатал сводку и запросил quit(1). Второй quit() здесь

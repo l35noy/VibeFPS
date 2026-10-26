@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Единая точка входа для каждой headless-проверки в VibeFPS.
@@ -47,8 +47,8 @@ $GodotBin = "E:\Godot\Godot_v4.7.2-stable_win64.exe"
 
 # Упорядоченный список имён проверок без расширения .gd.
 $Tests = @("smoke", "movement", "input_actions", "input_gate", "weapon_data", "integrity",
-           "weapon", "auto_weapon", "projectile", "enemies", "waves", "save", "progression",
-           "interact", "ui", "inventory")
+           "weapon", "auto_weapon", "shotgun_weapon", "projectile", "enemies", "floating_cube", "waves", "save", "progression",
+           "interact", "ui", "inventory", "shop_modal")
 
 $Filter = ''
 if ($args.Count -gt 0 -and $null -ne $args[0]) {

@@ -9,5 +9,5 @@ max_health = 60.0
 contact_damage = 30.0
 move_speed = 2.0
 spawn_interval = 1.5
-color = Color(0.8, 0.25, 0.25, 1)
+color = Color(0.92, 0.92, 0.94, 1)
 kind = 0

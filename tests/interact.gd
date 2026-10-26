@@ -172,7 +172,7 @@ func _initialize() -> void:
 	root.add_child(_shop)
 
 	_door = DoorPoint.new()
-	_door.location_id = "range"
+	_door.location_id = "arena_01"
 	_door.position = Vector3(0.0, 0.0, -6.0)
 	root.add_child(_door)
 
@@ -259,35 +259,38 @@ func _test_contracts() -> void:
 
 
 func _test_shop_purchase() -> void:
-	print("-- shop: отказ при нехватке очков, успешная покупка при наличии средств")
+	print("-- shop: открытие модального окна магазина и покупка оружия")
 	_check(_gs.points == 0, "предусловие: у игрока изначально 0 очков",
 		"(получено %d)" % _gs.points)
-	var refused := _shop.interact(_player)
-	_check(not refused, "магазин отказывает в покупке автомата без очков")
+	var opened := _shop.interact(_player)
+	_check(opened, "магазин открывает модальное окно при взаимодействии")
+	var shop_modal: Control = _player.get_node_or_null("UI/ShopModal") as Control
+	_check(shop_modal != null and shop_modal.visible, "ShopModal открыто на экране игрока")
 	_check(_packed_eq(_gs.owned_weapons, ["pistol"]),
-		"и не выдает оружие", "(получено %s)" % _gs.owned_weapons)
+		"и не выдает оружие без покупки", "(получено %s)" % _gs.owned_weapons)
 	_check(_gs.points == 0, "баланс очков не изменяется", "(получено %d)" % _gs.points)
-	_check(_shop_log.ok_values.size() == 1 and _shop_log.ok_values[0] == false,
-		"сигнал interacted сообщил о неудаче (false)",
+	_check(_shop_log.ok_values.size() == 1 and _shop_log.ok_values[0] == true,
+		"сигнал interacted сообщил об успешном открытии магазина (true)",
 		"(получено %s)" % str(_shop_log.ok_values))
 
 	_gs.award_points(_AUTO_PRICE)
-	var bought := _shop.interact(_player)
-	_check(bought, "магазин продает автомат за %d очков при наличии средств" % _AUTO_PRICE)
+	if shop_modal != null:
+		shop_modal.refresh()
+		shop_modal.call("_on_card_action", "auto", _AUTO_PRICE)
 	_check("auto" in _gs.owned_weapons, "автомат теперь в наличии", "(получено %s)" % _gs.owned_weapons)
 	_check(_gs.equipped_weapon_id == "auto", "и автомат экипирован",
 		"(получено \"%s\")" % _gs.equipped_weapon_id)
 	_check(_gs.points == 0, "стоимость покупки списана", "(получено %d)" % _gs.points)
-	_check(_shop_log.ok_values.size() == 2 and _shop_log.ok_values[1] == true,
-		"сигнал interacted сообщил об успехе (true)", "(получено %s)" % str(_shop_log.ok_values))
+	if shop_modal != null:
+		shop_modal.close()
 
 
 func _test_door_transition() -> void:
-	print("-- door: переход на стрельбище через смену сцены")
+	print("-- door: переход на арену 01 через смену сцены")
 	var entered := _door.interact(_player)
-	_check(entered, "дверь открывает разблокированное стрельбище")
-	_check(_changed_to.size() > 0 and _changed_to[_changed_to.size() - 1] == "res://levels/range/range.tscn",
-		"обработчик запросил сцену res://levels/range/range.tscn", "(получено %s)" % _changed_to)
+	_check(entered, "дверь открывает разблокированную арену 01")
+	_check(_changed_to.size() > 0 and _changed_to[_changed_to.size() - 1] == "res://levels/arena_01/arena_01.tscn",
+		"обработчик запросил сцену res://levels/arena_01/arena_01.tscn", "(получено %s)" % _changed_to)
 
 
 ## Проверка радиуса взаимодействия: магазин на 3.0 м доступен (радиус 3.5 м),
@@ -315,6 +318,7 @@ func _test_input_gate() -> void:
 	print("-- input gate: взаимодействие блокируется при свободном курсоре")
 	_player.global_position = Vector3(0.0, 0.0, 0.0)
 	var before := _shop_log.ok_values.size()
+	var shop_modal: Control = _player.get_node_or_null("UI/ShopModal") as Control
 
 	_player.set("gate_mouse_mode", Input.MOUSE_MODE_VISIBLE)
 	Input.parse_input_event(_interact_key_event(true))
@@ -323,6 +327,8 @@ func _test_input_gate() -> void:
 	_check(_shop_log.ok_values.size() == before,
 		"нажатие при свободном курсоре не достигает магазина и не вызывает сигнал",
 		"(получено сигналов: %d)" % (_shop_log.ok_values.size() - before))
+	if shop_modal != null:
+		_check(not shop_modal.visible, "модальное окно магазина не открывается при свободном курсоре")
 	_check(_gs.points == 0, "очки не тратятся",
 		"(получено %d)" % _gs.points)
 	_check(_gs.equipped_weapon_id == "auto",
@@ -339,12 +345,12 @@ func _test_input_gate() -> void:
 	_check(_shop_log.ok_values.size() == before + 1,
 		"то же нажатие достигает магазина при захваченном курсоре",
 		"(получено сигналов: %d)" % (_shop_log.ok_values.size() - before))
-	if _shop_log.ok_values.size() == before + 1:
-		_check(_shop_log.ok_values[before] == true,
-			"повторное взаимодействие с купленным оружием сообщает об успехе")
+	if shop_modal != null:
+		_check(shop_modal.visible, "модальное окно магазина успешно открыто при захваченном курсоре")
+		shop_modal.close()
 
 	_check(_gs.equipped_weapon_id == "auto",
-		"повторное взаимодействие только экипирует оружие: автомат остается экипирован",
+		"автомат остается экипирован",
 		"(получено \"%s\")" % _gs.equipped_weapon_id)
-	_check(_gs.points == 0, "и не списывает очки повторно",
+	_check(_gs.points == 0, "баланс очков сохранен",
 		"(получено %d)" % _gs.points)

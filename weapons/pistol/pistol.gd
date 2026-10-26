@@ -123,11 +123,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		start_reload()
 
 
+## Режим курсора для тестов в headless (-1 = использовать Input.mouse_mode).
+var mock_mouse_mode: int = -1
+
+
 ## Единственное место в игре, где читается Input.mouse_mode для гейта ввода.
 ## Обёрнуто в метод по той же причине, что и в player.gd: headless-дисплейсер
 ## не умеет захватывать курсор, поэтому проверка подменяет только значение,
 ## попадающее в гейт, а не синглтон Input.
 func _mouse_mode_for_play_input() -> int:
+	if mock_mouse_mode >= 0:
+		return mock_mouse_mode
 	return Input.mouse_mode
 
 
@@ -244,12 +250,12 @@ func _complete_reload() -> void:
 ## уходить туда, куда смотрит глаз. Если камеры нет (пистолет проверен без
 ## игрока), целимся от самого оружия.
 func _muzzle() -> Node3D:
-	if fire_rate_source != null:
+	if is_instance_valid(fire_rate_source) and fire_rate_source.is_inside_tree():
 		return fire_rate_source
 	var viewport := get_viewport()
 	if viewport != null:
 		var camera := viewport.get_camera_3d()
-		if camera != null:
+		if is_instance_valid(camera) and camera.is_inside_tree():
 			return camera
 	return self
 
@@ -325,6 +331,7 @@ func _instantiate_projectile() -> Node3D:
 	# Мировая позиция ставится ПОСЛЕ отвязки: у top_level-ноды это уже абсолютная
 	# точка, а до отвязки та же запись пересчитала бы локальную позицию прежнего
 	# родителя.
-	projectile.global_position = spawn.global_position
+	var spawn_pos: Vector3 = spawn.global_position if spawn.is_inside_tree() else (global_position + (spawn.position if spawn != null else Vector3.ZERO))
+	projectile.global_position = spawn_pos
 	projectile.call("launch", direction)
 	return projectile

@@ -8,10 +8,12 @@
 
 ---
 
-## Текущий статус: Фаза 4 завершена, игра готова к расширению (Фаза 5+)
+## Текущий статус: Монохромное архитектурное обновление (R1–R7) завершено
 
-* **Автопрогон тестов:** `16 passed, 0 failed, 0 skipped`.
+* **Автопрогон тестов:** `19 passed, 0 failed, 0 skipped`.
+* **E2E мастер-сьют:** `93 passed, 0 failed, 0 skipped`.
 * **Команда запуска проверок:** `pwsh -File .\tools\run_checks.ps1`
+* **Команда запуска E2E мастер-сьюта:** `& "E:\Godot\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script res://tests/e2e/e2e_suite.gd`
 
 ---
 
@@ -35,15 +37,15 @@
 - [x] Здоровье игрока (100 HP, сигналы `health_changed`, `died`).
 - [x] Контактный враг ([`enemy_contact.tscn`](file:///e:/projects/VibeFPS/entities/enemies/contact/enemy_contact.tscn)): 60 HP, урон 30 раз в 1.0 с, скорость 2.0 м/с.
 - [x] Хитбоксы и хертбоксы ([`hurtbox.gd`](file:///e:/projects/VibeFPS/entities/common/hurtbox.gd)) с разделением слоев коллизий.
-- [x] Навигация по навмешу ([`NavigationAgent3D`](file:///e:/projects/VibeFPS/entities/enemies/contact/enemy_contact.tscn)), синхронный bake в тире ([`range_scene.gd`](file:///e:/projects/VibeFPS/levels/range/range_scene.gd)).
+- [x] Навигация по навмешу ([`NavigationAgent3D`](file:///e:/projects/VibeFPS/entities/enemies/contact/enemy_contact.tscn)), навигационные регионы в сценах уровней ([`arena_scene.gd`](file:///e:/projects/VibeFPS/levels/arena_01/arena_scene.gd)).
 - [x] Обесцвечивание и удаление врага через 0.2 с после смерти.
 
 ### Фаза 3: Лобби, магазин и сохранения
-- [x] Главная сцена лобби ([`lobby.tscn`](file:///e:/projects/VibeFPS/levels/lobby/lobby.tscn)) с мини-тиром.
+- [x] Главная сцена лобби ([`lobby.tscn`](file:///e:/projects/VibeFPS/levels/lobby/lobby.tscn)).
 - [x] Автозагрузка [`GameState`](file:///e:/projects/VibeFPS/core/game_state.gd) — единственный владелец переходов между сценами (`enter_location`, `return_to_lobby`).
 - [x] Автозагрузка [`SaveSystem`](file:///e:/projects/VibeFPS/core/save_system.gd) — автосохранение очков, купленного оружия и открытых локаций (`user://save.json`) с дебаунсом 1.5 с и I/O-батчингом.
 - [x] Точка магазина ([`shop_point.gd`](file:///e:/projects/VibeFPS/levels/lobby/shop_point.gd)): покупка автомата за 300 очков и смена оружия по клавише E.
-- [x] Двери-порталы ([`door_point.gd`](file:///e:/projects/VibeFPS/levels/lobby/door_point.gd)): переход в локации (тир `range`, арена `arena_01`).
+- [x] Двери-порталы ([`door_point.gd`](file:///e:/projects/VibeFPS/levels/lobby/door_point.gd)): переход в боевую локацию (арена `arena_01`).
 - [x] HUD-интерфейс ([`ui.gd`](file:///e:/projects/VibeFPS/ui/ui.gd)): шкала здоровья (HP), патроны в магазине, индикатор перезарядки (`ReloadLabel`), счёт очков, инвентарь.
 - [x] Возврат в лобби при смерти с сохранением накопленного прогресса.
 
@@ -55,6 +57,16 @@
 - [x] UI волн и босса: номер текущей волны (`WaveLabel`), полоса здоровья босса (`BossBar`), экраны победы (`VictoryPanel`) и поражения (`DefeatPanel`).
 - [x] Зачистка локации и награды: +50 очков за завершение каждой волны, +500 очков за полную зачистку, разблокировка следующей двери локации (`arena_02`) в лобби.
 - [x] Полный автоматический тестовый сьют волн ([`tests/waves.gd`](file:///e:/projects/VibeFPS/tests/waves.gd)): 59 проверок контрактов данных, врагов, менеджера волн и арены.
+
+### Фаза 5: Монохромное архитектурное обновление (Monochrome Architectural Line Art Update — R1–R7)
+- [x] **R1 (Визуальный стиль):** процедурная CAD-сетка на полу и стенах лобби и арены 01 (`cad_grid.gdshader`), Inverted Hull белый матовый материал с чёрным контуром (`inverted_hull_material.tres`).
+- [x] **R2 (Реструктуризация локаций):** удалены `levels/range/` и `levels/main/`, активны только `lobby` и `arena_01`, Лобби расширено в зал 28х36 м с 6 колоннами и ровно 2 интерактивными зонами (`DoorPoint` и `ShopPoint`).
+- [x] **R3 (Контекстный HUD):** подсказка `[E] <действие>` в радиусе 3.5 м, мгновенное скрытие при открытии модальных окон.
+- [x] **R4 (Магазин оружия):** центрированное модальное окно `ShopModal`, группа `modal_ui`, блокировка ввода `InputGate`, 3 карточки с процедурными 2D CAD-чертежами и размерными засечками (пистолет 180 мм, АК-47 870 мм, дробовик 650 мм), 3-состоятельные кнопки («В руках», «Экипировать», «Купить за X очков»), закрытие по Esc/E/CloseButton.
+- [x] **R5 (Оружие):** двуствольный дробовик (`shotgun.tres`, `shotgun.gd`, `shotgun.tscn`: залп из 10 дробинок на 70 м/с, 120 урона в упор, 2 патрона, перезарядка 1.1 с, цена 600 очков) и визуальный редизайн АК-47 (`weapons/auto/auto.tscn`).
+- [x] **R6 (Контактные враги):** парящий куб 1x1x1 м (`enemy_contact.tscn`, `enemy_contact.gd`), парение 1.0 м, боббинг 0.1 м, вращение Y 1.8 рад/с, отключение левитации и гравитационное падение при гибели на пол y=0.5 м, `tests/floating_cube.gd`.
+- [x] **R7 (Баланс волн):** передышка между волнами уменьшена до 5.0 с (`intermission_duration = 5.0` в `wave_manager.gd`).
+- [x] **E2E-тестирование:** 93/93 проверки пройдены со 100% успехом (Tier 1: 42, Tier 2: 36, Tier 3: 7, Tier 4: 8).
 
 ---
 

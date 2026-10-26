@@ -26,7 +26,7 @@ enum State {
 
 @export var auto_start: bool = true
 @export var total_waves: int = 4
-@export var intermission_duration: float = 10.0
+@export var intermission_duration: float = 5.0
 @export var spawn_interval: float = 1.2
 @export var spawn_points: Array[Node3D] = []
 
@@ -273,8 +273,9 @@ func _complete_location() -> void:
 	if gs != null:
 		# Начисление 500 очков за зачистку локации (спека PROJECT.md §7.5)
 		gs.award_points(int(gs.POINTS_PER_CLEAR))
-		# Разблокировка следующей локации в лобби
-		gs.unlock_location("arena_02")
+		# Безопасная разблокировка следующей локации в лобби
+		if gs.has_method("unlock_location"):
+			gs.unlock_location("arena_02")
 
 	if _ui != null and _ui.has_method("show_victory"):
 		_ui.call("show_victory")

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/weapon_data.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = "shotgun"
+display_name = "Shotgun"
+price = 600
+damage = 12.0
+rounds_per_minute = 120.0
+magazine_size = 2
+reload_time = 1.1
+projectile_speed = 70.0
+projectile_radius = 0.05
+projectile_lifetime = 3.0
+projectile_color = Color(0.15, 0.15, 0.15, 1)
+pellets = 10
+spread_angle_degrees = 4.5

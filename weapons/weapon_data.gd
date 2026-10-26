@@ -7,6 +7,7 @@ extends Resource
 ## перезарядка, огонь) живёт в скрипте оружия, а не здесь: ресурс ничего не
 ## знает про узлы сцены, поэтому его можно проверить headless, не строя мир.
 
+@export var id: String = ""
 @export var display_name: String = "Weapon"
 @export var price: int = 0  # Очки за покупку; 0 = стартовое бесплатное (pistol)
 @export var damage: float = 30.0
@@ -24,6 +25,17 @@ extends Resource
 @export var projectile_lifetime: float = 3.0
 ## Цвет снаряда и шлейфа. Геометрический стиль: контрастная геометрия.
 @export var projectile_color: Color = Color(0.15, 0.15, 0.15)
+## Число дробинок в залпе (1 для обычного оружия, 10 для дробовика).
+@export var pellets: int = 1
+## Угол конуса разлёта дробинок в градусах.
+@export var spread_angle_degrees: float = 0.0
+
+## Выстрелов в секунду (rounds_per_minute / 60.0).
+var fire_rate: float:
+	get:
+		return rounds_per_minute / 60.0
+	set(value):
+		rounds_per_minute = value * 60.0
 
 
 ## Интервал между выстрелами в секундах. Производное от rounds_per_minute,
@@ -38,4 +50,5 @@ func seconds_between_shots() -> float:
 ## перезарядкой без патронов.
 func is_valid() -> bool:
 	return rounds_per_minute > 0.0 and magazine_size > 0 \
-		and reload_time > 0.0 and damage > 0.0 and projectile_speed > 0.0
+		and reload_time > 0.0 and damage > 0.0 and projectile_speed > 0.0 \
+		and pellets > 0 and spread_angle_degrees >= 0.0

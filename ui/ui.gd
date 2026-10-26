@@ -35,6 +35,8 @@ var _is_reloading: bool = false
 @onready var _boss_container: Control = get_node_or_null("BossContainer") as Control
 @onready var _boss_label: Label = get_node_or_null("BossContainer/BossLabel") as Label
 @onready var _boss_bar: ProgressBar = get_node_or_null("BossContainer/BossBar") as ProgressBar
+@onready var _interact_prompt: Label = get_node_or_null("InteractPrompt") as Label
+@onready var _shop_modal: Control = get_node_or_null("ShopModal") as Control
 @onready var _defeat_panel: Control = get_node_or_null("DefeatPanel") as Control
 @onready var _defeat_btn: Button = get_node_or_null("DefeatPanel/VBox/LobbyButton") as Button
 @onready var _victory_panel: Control = get_node_or_null("VictoryPanel") as Control
@@ -49,15 +51,66 @@ func _ready() -> void:
 		_victory_btn.pressed.connect(_on_victory_return_pressed)
 
 
-## Открыто ли какое-либо модальное окно интерфейса (инвентарь, экран поражения, экран победы).
+func _get_interact_prompt() -> Label:
+	if _interact_prompt != null:
+		return _interact_prompt
+	_interact_prompt = get_node_or_null("InteractPrompt") as Label
+	return _interact_prompt
+
+
+func _get_shop_modal() -> Control:
+	if _shop_modal != null:
+		return _shop_modal
+	_shop_modal = get_node_or_null("ShopModal") as Control
+	return _shop_modal
+
+
+## Открыто ли какое-либо модальное окно интерфейса (инвентарь, магазин, экран поражения, экран победы).
 func is_modal_open() -> bool:
 	if _inventory_panel != null and _inventory_panel.has_method("is_open") and bool(_inventory_panel.call("is_open")):
+		return true
+	var shop := _get_shop_modal()
+	if shop != null and shop.has_method("is_open") and bool(shop.call("is_open")):
 		return true
 	if _defeat_panel != null and _defeat_panel.visible:
 		return true
 	if _victory_panel != null and _victory_panel.visible:
 		return true
+	for child in get_children():
+		if child != _inventory_panel and child != shop and child.is_in_group("modal_ui"):
+			if child.has_method("is_open") and bool(child.call("is_open")):
+				return true
+			if (child is CanvasItem) and (child as CanvasItem).visible:
+				return true
 	return false
+
+
+## Установить контекстный текст подсказки взаимодействия [E].
+func set_interaction_prompt(prompt_text: String) -> void:
+	var prompt := _get_interact_prompt()
+	if prompt == null:
+		return
+	if prompt_text.is_empty() or is_modal_open():
+		prompt.visible = false
+		prompt.text = ""
+	else:
+		prompt.visible = true
+		prompt.text = "[E] " + prompt_text
+
+
+## Обновление видимости подсказки взаимодействия (скрыть при открытом модальном окне).
+func update_interaction_visibility() -> void:
+	var prompt := _get_interact_prompt()
+	if is_modal_open() and prompt != null:
+		prompt.visible = false
+
+
+## Открыть модальное окно магазина оружия.
+func open_shop_modal() -> void:
+	var shop := _get_shop_modal()
+	if shop != null and shop.has_method("open"):
+		shop.call("open")
+		update_interaction_visibility()
 
 
 ## Отписка при выходе из дерева: узлы, к которым HUD был привязан, переживают

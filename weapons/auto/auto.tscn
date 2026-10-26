@@ -1,57 +1,89 @@
 [gd_scene format=3 uid="uid://c9fj2nkq5vt3m"]
 
-[ext_resource type="Script" uid="uid://bg0d4f8nbbd46" path="res://weapons/pistol/pistol.gd" id="1_auto_script"]
+[ext_resource type="Script" path="res://weapons/pistol/pistol.gd" id="1_auto_script"]
 [ext_resource type="Resource" path="res://data/weapons/auto.tres" id="2_auto_data"]
 [ext_resource type="PackedScene" path="res://weapons/projectile/projectile.tscn" id="3_auto_projectile"]
+[ext_resource type="Material" path="res://levels/common/inverted_hull_material.tres" id="4_hull_mat"]
 
-[sub_resource type="BoxMesh" id="BoxMesh_auto_frame"]
-size = Vector3(0.05, 0.09, 0.3)
+[sub_resource type="BoxMesh" id="BoxMesh_receiver"]
+size = Vector3(0.05, 0.07, 0.26)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_auto_frame"]
-albedo_color = Color(0.12, 0.16, 0.36, 1)
-metallic_specular = 0.0
-emission_enabled = true
-emission = Color(0.12, 0.16, 0.36, 1)
-emission_energy_multiplier = 0.5
+[sub_resource type="BoxMesh" id="BoxMesh_handguard"]
+size = Vector3(0.048, 0.055, 0.16)
 
-[sub_resource type="BoxMesh" id="BoxMesh_auto_grip"]
-size = Vector3(0.045, 0.13, 0.07)
+[sub_resource type="CylinderMesh" id="CylinderMesh_gas_tube"]
+top_radius = 0.01
+bottom_radius = 0.01
+height = 0.16
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_auto_grip"]
-albedo_color = Color(0.08, 0.11, 0.28, 1)
-metallic_specular = 0.0
-emission_enabled = true
-emission = Color(0.08, 0.11, 0.28, 1)
-emission_energy_multiplier = 0.5
+[sub_resource type="CylinderMesh" id="CylinderMesh_barrel"]
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.32
 
-[sub_resource type="BoxMesh" id="BoxMesh_auto_sight"]
-size = Vector3(0.009, 0.01, 0.03)
+[sub_resource type="BoxMesh" id="BoxMesh_front_sight"]
+size = Vector3(0.015, 0.04, 0.02)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_auto_sight"]
-albedo_color = Color(1, 0.62, 0.12, 1)
-metallic_specular = 0.0
-emission_enabled = true
-emission = Color(1, 0.62, 0.12, 1)
-emission_energy_multiplier = 1.5
+[sub_resource type="BoxMesh" id="BoxMesh_stock"]
+size = Vector3(0.04, 0.08, 0.22)
 
-[node name="Auto" type="Node3D" unique_id=10000100]
+[sub_resource type="BoxMesh" id="BoxMesh_grip"]
+size = Vector3(0.038, 0.12, 0.055)
+
+[sub_resource type="BoxMesh" id="BoxMesh_mag_segment"]
+size = Vector3(0.032, 0.09, 0.06)
+
+[node name="Auto" type="Node3D"]
 script = ExtResource("1_auto_script")
 data = ExtResource("2_auto_data")
 projectile_scene = ExtResource("3_auto_projectile")
 
-[node name="Frame" type="MeshInstance3D" parent="." unique_id=10000101]
-mesh = SubResource("BoxMesh_auto_frame")
-surface_material_override/0 = SubResource("StandardMaterial3D_auto_frame")
+[node name="Receiver" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_receiver")
+surface_material_override/0 = ExtResource("4_hull_mat")
 
-[node name="Grip" type="MeshInstance3D" parent="." unique_id=10000102]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0.12)
-mesh = SubResource("BoxMesh_auto_grip")
-surface_material_override/0 = SubResource("StandardMaterial3D_auto_grip")
+[node name="Handguard" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.005, -0.18)
+mesh = SubResource("BoxMesh_handguard")
+surface_material_override/0 = ExtResource("4_hull_mat")
 
-[node name="FrontSight" type="MeshInstance3D" parent="." unique_id=10000103]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -0.13)
-mesh = SubResource("BoxMesh_auto_sight")
-surface_material_override/0 = SubResource("StandardMaterial3D_auto_sight")
+[node name="GasTube" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0.04, -0.18)
+mesh = SubResource("CylinderMesh_gas_tube")
+surface_material_override/0 = ExtResource("4_hull_mat")
 
-[node name="Muzzle" type="Marker3D" parent="." unique_id=10000104]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.18)
+[node name="Barrel" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0.015, -0.22)
+mesh = SubResource("CylinderMesh_barrel")
+surface_material_override/0 = ExtResource("4_hull_mat")
+
+[node name="FrontSight" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, -0.34)
+mesh = SubResource("BoxMesh_front_sight")
+surface_material_override/0 = ExtResource("4_hull_mat")
+
+[node name="Stock" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.984808, 0.173648, 0, -0.173648, 0.984808, 0, -0.03, 0.22)
+mesh = SubResource("BoxMesh_stock")
+surface_material_override/0 = ExtResource("4_hull_mat")
+
+[node name="Grip" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, -0.09, 0.08)
+mesh = SubResource("BoxMesh_grip")
+surface_material_override/0 = ExtResource("4_hull_mat")
+
+[node name="CurvedMag" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, -0.05)
+
+[node name="CurvedMagUpper" type="MeshInstance3D" parent="CurvedMag"]
+transform = Transform3D(1, 0, 0, 0, 0.984808, -0.173648, 0, 0.173648, 0.984808, 0, -0.04, 0)
+mesh = SubResource("BoxMesh_mag_segment")
+surface_material_override/0 = ExtResource("4_hull_mat")
+
+[node name="CurvedMagLower" type="MeshInstance3D" parent="CurvedMag"]
+transform = Transform3D(1, 0, 0, 0, 0.939693, -0.34202, 0, 0.34202, 0.939693, 0, -0.11, -0.025)
+mesh = SubResource("BoxMesh_mag_segment")
+surface_material_override/0 = ExtResource("4_hull_mat")
+
+[node name="Muzzle" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.015, -0.36)

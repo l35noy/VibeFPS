@@ -1,0 +1,16 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://bio1qm27sy57q"]
+
+[ext_resource type="Shader" uid="uid://ckbnw7356cwm" path="res://levels/common/cad_grid.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "CADGridMaterial"
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/background_color = Color(0.94, 0.94, 0.95, 1)
+shader_parameter/grid_color = Color(0.18, 0.2, 0.22, 1)
+shader_parameter/subgrid_color = Color(0.75, 0.77, 0.8, 1)
+shader_parameter/grid_size = 3.0000001392401203
+shader_parameter/subgrid_divisions = 2.0000000475
+shader_parameter/line_width = 0.0010000000475
+shader_parameter/subline_width = 0.0010000000475
+shader_parameter/roughness = 0.9

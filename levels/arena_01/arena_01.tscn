@@ -1,15 +1,17 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene format=3 uid="uid://c51whb5vub05a"]
 
 [ext_resource type="Script" path="res://levels/arena_01/arena_scene.gd" id="1_arena_script"]
 [ext_resource type="PackedScene" path="res://entities/player/player.tscn" id="2_player_scene"]
 [ext_resource type="Script" path="res://levels/common/wave_manager.gd" id="3_wave_script"]
 [ext_resource type="Script" path="res://levels/lobby/door_point.gd" id="4_door_script"]
+[ext_resource type="Material" path="res://levels/common/cad_grid_material.tres" id="5_cad_grid"]
+[ext_resource type="Material" path="res://levels/common/inverted_hull_material.tres" id="6_outline_mat"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_arena"]
-sky_top_color = Color(0.12, 0.45, 0.75, 1)
-sky_horizon_color = Color(0.7, 0.78, 0.85, 1)
-ground_bottom_color = Color(0.15, 0.15, 0.18, 1)
-ground_horizon_color = Color(0.7, 0.78, 0.85, 1)
+sky_top_color = Color(0.85, 0.9, 0.96, 1)
+sky_horizon_color = Color(0.95, 0.96, 0.98, 1)
+ground_bottom_color = Color(0.85, 0.88, 0.92, 1)
+ground_horizon_color = Color(0.95, 0.96, 0.98, 1)
 
 [sub_resource type="Sky" id="Sky_arena"]
 sky_material = SubResource("ProceduralSkyMaterial_arena")
@@ -18,8 +20,8 @@ sky_material = SubResource("ProceduralSkyMaterial_arena")
 background_mode = 2
 sky = SubResource("Sky_arena")
 ambient_light_source = 2
-ambient_light_color = Color(0.85, 0.85, 0.9, 1)
-ambient_light_energy = 0.6
+ambient_light_color = Color(0.9, 0.92, 0.95, 1)
+ambient_light_energy = 0.8
 
 [sub_resource type="NavigationMesh" id="NavigationMesh_arena"]
 cell_height = 0.25
@@ -31,10 +33,6 @@ size = Vector3(44, 1, 44)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(44, 1, 44)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
-albedo_color = Color(0.85, 0.85, 0.88, 1)
-metallic_specular = 0.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_wall_x"]
 size = Vector3(44, 5, 1)
@@ -48,31 +46,17 @@ size = Vector3(1, 5, 44)
 [sub_resource type="BoxShape3D" id="BoxShape3D_wall_z"]
 size = Vector3(1, 5, 44)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wall"]
-albedo_color = Color(0.6, 0.65, 0.7, 1)
-metallic_specular = 0.0
-
 [sub_resource type="BoxMesh" id="BoxMesh_pillar"]
 size = Vector3(3, 4, 3)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_pillar"]
 size = Vector3(3, 4, 3)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pillar"]
-albedo_color = Color(0.45, 0.5, 0.55, 1)
-metallic_specular = 0.0
-
 [sub_resource type="BoxMesh" id="BoxMesh_portal"]
 size = Vector3(2, 3, 0.4)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_portal"]
 size = Vector3(2, 3, 0.4)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_portal"]
-albedo_color = Color(0.2, 0.8, 0.4, 1)
-emission_enabled = true
-emission = Color(0.2, 0.8, 0.4, 1)
-emission_energy_multiplier = 2.0
 
 [node name="Arena01" type="Node3D"]
 script = ExtResource("1_arena_script")
@@ -89,6 +73,7 @@ navigation_mesh = SubResource("NavigationMesh_arena")
 
 [node name="Floor" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Floor"]
@@ -96,10 +81,11 @@ shape = SubResource("BoxShape3D_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Floor"]
 mesh = SubResource("BoxMesh_floor")
-surface_material_override/0 = SubResource("StandardMaterial3D_floor")
+surface_material_override/0 = ExtResource("5_cad_grid")
 
 [node name="WallNorth" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -22)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/WallNorth"]
@@ -107,10 +93,11 @@ shape = SubResource("BoxShape3D_wall_x")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/WallNorth"]
 mesh = SubResource("BoxMesh_wall_x")
-surface_material_override/0 = SubResource("StandardMaterial3D_wall")
+surface_material_override/0 = ExtResource("5_cad_grid")
 
 [node name="WallSouth" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 22)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/WallSouth"]
@@ -118,10 +105,11 @@ shape = SubResource("BoxShape3D_wall_x")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/WallSouth"]
 mesh = SubResource("BoxMesh_wall_x")
-surface_material_override/0 = SubResource("StandardMaterial3D_wall")
+surface_material_override/0 = ExtResource("5_cad_grid")
 
 [node name="WallWest" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22, 2.5, 0)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/WallWest"]
@@ -129,10 +117,11 @@ shape = SubResource("BoxShape3D_wall_z")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/WallWest"]
 mesh = SubResource("BoxMesh_wall_z")
-surface_material_override/0 = SubResource("StandardMaterial3D_wall")
+surface_material_override/0 = ExtResource("5_cad_grid")
 
 [node name="WallEast" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 2.5, 0)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/WallEast"]
@@ -140,10 +129,11 @@ shape = SubResource("BoxShape3D_wall_z")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/WallEast"]
 mesh = SubResource("BoxMesh_wall_z")
-surface_material_override/0 = SubResource("StandardMaterial3D_wall")
+surface_material_override/0 = ExtResource("5_cad_grid")
 
 [node name="Cover1" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 2, -10)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Cover1"]
@@ -151,10 +141,11 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover1"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = SubResource("StandardMaterial3D_pillar")
+surface_material_override/0 = ExtResource("6_outline_mat")
 
 [node name="Cover2" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 2, -10)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Cover2"]
@@ -162,10 +153,11 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover2"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = SubResource("StandardMaterial3D_pillar")
+surface_material_override/0 = ExtResource("6_outline_mat")
 
 [node name="Cover3" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 2, 10)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Cover3"]
@@ -173,10 +165,11 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover3"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = SubResource("StandardMaterial3D_pillar")
+surface_material_override/0 = ExtResource("6_outline_mat")
 
 [node name="Cover4" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 2, 10)
+collision_layer = 1
 collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Cover4"]
@@ -184,7 +177,7 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover4"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = SubResource("StandardMaterial3D_pillar")
+surface_material_override/0 = ExtResource("6_outline_mat")
 
 [node name="Player" parent="." instance=ExtResource("2_player_scene")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 16)
@@ -207,7 +200,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 5)
 script = ExtResource("3_wave_script")
 spawn_points = [NodePath("../SpawnPoints/SpawnPoint1"), NodePath("../SpawnPoints/SpawnPoint2"), NodePath("../SpawnPoints/SpawnPoint3"), NodePath("../SpawnPoints/SpawnPoint4")]
 
-[node name="ExitPortal" type="Area3D" parent="."]
+[node name="ExitPortal" type="Area3D" parent="." groups=["interactable"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 19)
 collision_layer = 32
 collision_mask = 2
@@ -219,4 +212,4 @@ shape = SubResource("BoxShape3D_portal")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="ExitPortal"]
 mesh = SubResource("BoxMesh_portal")
-surface_material_override/0 = SubResource("StandardMaterial3D_portal")
+surface_material_override/0 = ExtResource("6_outline_mat")

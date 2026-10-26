@@ -37,11 +37,9 @@ const POINTS_PER_WAVE := 50
 const POINTS_PER_CLEAR := 500
 
 ## id локации -> сцена. Приватный: наружу торчит только enter_location(id).
-## "range" — мини-тир лобби; "arena_01" — первая боевая локация Фазы 4.
+## "arena_01" — первая боевая локация; "lobby" — главное лобби.
 const _LOCATION_SCENES := {
-	"range": "res://levels/range/range.tscn",
 	"arena_01": "res://levels/arena_01/arena_01.tscn",
-	"arena_02": "res://levels/arena_01/arena_01.tscn",
 	"lobby": "res://levels/lobby/lobby.tscn",
 }
 
@@ -51,12 +49,13 @@ const _LOCATION_SCENES := {
 const _WEAPON_SCENES := {
 	"pistol": "res://weapons/pistol/pistol.tscn",
 	"auto": "res://weapons/auto/auto.tscn",
+	"shotgun": "res://weapons/shotgun/shotgun.tscn",
 }
 
 var points: int = 0
 var owned_weapons: PackedStringArray = ["pistol"]
 var equipped_weapon_id: String = "pistol"
-var unlocked_locations: PackedStringArray = ["range"]
+var unlocked_locations: PackedStringArray = ["arena_01"]
 
 ## Задержка дебаунса автосохранения в секундах.
 ## В бою очки копятся в памяти и сбрасываются на диск пачкой.

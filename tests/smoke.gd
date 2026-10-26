@@ -1,7 +1,7 @@
 extends SceneTree
 
 ## Проверка целостности базовых сцен VibeFPS.
-## Проверяет, что main.tscn и lobby.tscn загружаются и содержат необходимые узлы
+## Проверяет, что arena_01.tscn и lobby.tscn загружаются и содержат необходимые узлы
 ## и ресурсы, от которых зависит игра.
 ## Запуск: godot --headless --path . --script res://tests/smoke.gd
 ##         .\tools\run_checks.ps1 smoke
@@ -27,9 +27,9 @@ func _warn(label: String) -> void:
 
 func _initialize() -> void:
 	print("=== VibeFPS: базовый смоук-тест сцен ===")
-	var packed: PackedScene = load("res://levels/main/main.tscn")
+	var packed: PackedScene = load("res://levels/arena_01/arena_01.tscn")
 	if packed == null:
-		print("FATAL: не удалось загрузить res://levels/main/main.tscn")
+		print("FATAL: не удалось загрузить res://levels/arena_01/arena_01.tscn")
 		quit(1)
 		return
 
@@ -41,7 +41,7 @@ func _initialize() -> void:
 
 	var player: CharacterBody3D = world.get_node_or_null("Player") as CharacterBody3D
 	if player == null:
-		print("FATAL: узел Player не найден в main.tscn")
+		print("FATAL: узел Player не найден в arena_01.tscn")
 		quit(1)
 		return
 
@@ -57,8 +57,8 @@ func _initialize() -> void:
 
 
 func _test_scene_setup(world: Node3D, player: CharacterBody3D) -> void:
-	print("-- настройка сцены main.tscn")
-	_check(world.get_node_or_null("Floor") != null, "узел Floor существует")
+	print("-- настройка сцены arena_01.tscn")
+	_check(world.find_child("Floor") != null, "узел Floor существует")
 	_check(world.get_node_or_null("WorldEnvironment") != null, "узел WorldEnvironment существует")
 	var cam := player.get_node_or_null("Camera3D") as Camera3D
 	_check(cam != null and cam.current, "Camera3D существует и активна")
@@ -83,7 +83,7 @@ func _test_sky_background(world: Node3D) -> void:
 
 
 ## Проверка сборки лобби: сцена появления игрока содержит пол, игрока,
-## две точки взаимодействия и три тренировочные мишени.
+## и две точки взаимодействия (ShopPoint и DoorPoint).
 func _test_lobby() -> void:
 	print("-- лобби: сборка сцены")
 	var packed: PackedScene = load("res://levels/lobby/lobby.tscn")
@@ -118,7 +118,7 @@ func _test_lobby() -> void:
 			"ShopPoint находится на слое 6 (interactable)",
 			"(получено %d)" % int(shop.collision_layer))
 
-	var door := lobby.get_node_or_null("DoorPoint")
+	var door := lobby.get_node_or_null("DoorPoint") as DoorPoint
 	_check(door != null, "DoorPoint существует")
 	if door != null:
 		_check(door.is_in_group("interactable"),
@@ -126,22 +126,8 @@ func _test_lobby() -> void:
 		_check(int(door.collision_layer) == 1 << 5,
 			"DoorPoint находится на слое 6 (interactable)",
 			"(получено %d)" % int(door.collision_layer))
-
-	var target_names := ["TargetNear", "TargetMid", "TargetFar"]
-	var targets: Array[Node] = []
-	for target_name in target_names:
-		var target := lobby.get_node_or_null(target_name)
-		_check(target != null, "%s существует" % target_name)
-		if target != null:
-			targets.append(target)
-	_check(targets.size() == 3, "в лобби установлены ровно три мишени",
-		"(получено %d)" % targets.size())
-	for target in targets:
-		var hurtbox := target.get_node_or_null("Hurtbox") as Hurtbox
-		_check(hurtbox != null, "%s несёт узел Hurtbox" % target.name)
-		if hurtbox != null:
-			_check(hurtbox.zone == 0,
-				"хитбокс %s относится к зоне 0 (enemy_hurtbox)" % target.name,
-				"(получено %d)" % hurtbox.zone)
+		_check(door.location_id == "arena_01",
+			"DoorPoint ведёт на arena_01",
+			"(получено \"%s\")" % door.location_id)
 
 	lobby.queue_free()

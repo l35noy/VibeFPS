@@ -325,6 +325,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Взаимодействие — игровой ввод, тот же гейт, что у огня и движения:
 		# со свободным курсором E ничего не делает. Поглощено, чтобы сцена
 		# ниже по стеку не получила ту же клавишу повторно.
+		if is_modal_active():
+			return
 		_try_interact()
 		get_viewport().set_input_as_handled()
 
@@ -351,6 +353,8 @@ func nearest_interactable() -> Node:
 		if not (node is Node3D):
 			continue
 		if not node.is_inside_tree():
+			continue
+		if not (node as Node3D).is_visible_in_tree():
 			continue
 		var dist := global_position.distance_to((node as Node3D).global_position)
 		if dist > _INTERACT_RANGE:
@@ -412,6 +416,17 @@ func _physics_process(delta: float) -> void:
 		velocity.z = 0.0
 
 	move_and_slide()
+
+	if _ui != null and _ui.has_method("set_interaction_prompt"):
+		if is_modal_active():
+			_ui.call("set_interaction_prompt", "")
+		else:
+			var nearest: Node = nearest_interactable()
+			if nearest != null and (nearest as Node3D).is_visible_in_tree() and nearest.has_method("get_interaction_prompt"):
+				var prompt_text: String = str(nearest.call("get_interaction_prompt"))
+				_ui.call("set_interaction_prompt", prompt_text)
+			else:
+				_ui.call("set_interaction_prompt", "")
 
 	if global_position.y < fall_limit:
 		# Падение за kill-plane — это смерть, а не тихий респавн: здоровье

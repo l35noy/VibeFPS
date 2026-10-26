@@ -114,14 +114,14 @@ func _initialize() -> void:
 
 
 func _test_initial_state() -> void:
-	print("-- старт: новая игра начинается с пистолетом и стрельбищем")
+	print("-- старт: новая игра начинается с пистолетом и ареной 01")
 	_check(_gs.points == 0, "начальное количество очков 0", "(получено %d)" % _gs.points)
 	_check(_packed_eq(_gs.owned_weapons, ["pistol"]),
 		"в наличии только пистолет", "(получено %s)" % _gs.owned_weapons)
 	_check(_gs.equipped_weapon_id == "pistol", "экипирован пистолет",
 		"(получено \"%s\")" % _gs.equipped_weapon_id)
-	_check(_packed_eq(_gs.unlocked_locations, ["range"]),
-		"разблокировано только стрельбище", "(получено %s)" % _gs.unlocked_locations)
+	_check(_packed_eq(_gs.unlocked_locations, ["arena_01"]),
+		"разблокирована только арена 01", "(получено %s)" % _gs.unlocked_locations)
 
 
 func _test_award_points() -> void:
@@ -194,10 +194,10 @@ func _test_equip() -> void:
 
 func _test_enter_location() -> void:
 	print("-- enter_location: только разблокированные локации через внедренный обработчик")
-	var entered := _gs.enter_location("range")
-	_check(entered, "переход в разблокированное стрельбище успешен")
-	_check(_packed_eq(_changed_to, ["res://levels/range/range.tscn"]),
-		"обработчик запросил переход на res://levels/range/range.tscn", "(получено %s)" % _changed_to)
+	var entered := _gs.enter_location("arena_01")
+	_check(entered, "переход в разблокированную арену 01 успешен")
+	_check(_packed_eq(_changed_to, ["res://levels/arena_01/arena_01.tscn"]),
+		"обработчик запросил переход на res://levels/arena_01/arena_01.tscn", "(получено %s)" % _changed_to)
 	var before := _changed_to.size()
 	_check(not _gs.enter_location("secret"), "заблокированная локация отклоняется")
 	_check(_changed_to.size() == before,
@@ -207,7 +207,7 @@ func _test_enter_location() -> void:
 func _test_return_to_lobby() -> void:
 	print("-- return_to_lobby: возврат в лобби через обработчик")
 	_gs.return_to_lobby("death")
-	_check(_packed_eq(_changed_to, ["res://levels/range/range.tscn", "res://levels/lobby/lobby.tscn"]),
+	_check(_packed_eq(_changed_to, ["res://levels/arena_01/arena_01.tscn", "res://levels/lobby/lobby.tscn"]),
 		"обработчик запросил переход на res://levels/lobby/lobby.tscn",
 		"(получено %s)" % _changed_to)
 
