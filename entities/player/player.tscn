@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://cbccmghaa3ltg" path="res://weapons/pistol/pistol.tscn" id="3_pistol"]
 [ext_resource type="Script" uid="uid://dskkoyshxcke8" path="res://entities/common/hurtbox.gd" id="4_hurtbox"]
 [ext_resource type="PackedScene" path="res://ui/ui.tscn" id="5_ui"]
+[ext_resource type="Material" uid="uid://c8q4v7y2m1p0x" path="res://levels/common/edge_detection_material.tres" id="6_edge_mat"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.4
@@ -18,6 +19,9 @@ height = 1.8
 radius = 0.4
 height = 1.8
 
+[sub_resource type="QuadMesh" id="QuadMesh_edge_detection"]
+size = Vector2(2, 2)
+
 [node name="Player" type="CharacterBody3D" unique_id=734125352]
 collision_layer = 2
 script = ExtResource("1_script")
@@ -28,12 +32,20 @@ shape = SubResource("CapsuleShape3D_body")
 
 [node name="BodyMesh" type="MeshInstance3D" parent="." unique_id=1847442923]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+visible = false
+cast_shadow = 0
 mesh = SubResource("CapsuleMesh_body")
 surface_material_override/0 = ExtResource("2_body_material")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=485033738]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9563257, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 0)
 current = true
+
+[node name="EdgeDetection" type="MeshInstance3D" parent="Camera3D" unique_id=208941725]
+extra_cull_margin = 16384.0
+cast_shadow = 0
+mesh = SubResource("QuadMesh_edge_detection")
+surface_material_override/0 = ExtResource("6_edge_mat")
 
 [node name="Pistol" parent="." unique_id=452584642 instance=ExtResource("3_pistol")]
 transform = Transform3D(0.9950042, -0.0049895914, 0.099708654, 0, 0.99875027, 0.04997917, -0.09983342, -0.04972948, 0.9937607, 0.16, 1.5, -0.45)

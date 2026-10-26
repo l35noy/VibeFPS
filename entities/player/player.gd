@@ -51,6 +51,8 @@ var _health: float = 0.0
 var _game_state: Node = null
 
 @onready var _camera: Camera3D = $Camera3D
+## Меш капсулы тела игрока. В виде от первого лица невидим и не отбрасывает тень.
+@onready var _body_mesh: MeshInstance3D = get_node_or_null("BodyMesh") as MeshInstance3D
 ## Пистолет игрока. Может отсутствовать: лобби Фазы 4 и любые сцены без
 ## оружия создают того же персонажа, и требовать в каждой из них узел с
 ## характеристиками оружия было бы требованием к сцене, а не к игроку.
@@ -64,6 +66,9 @@ var _game_state: Node = null
 
 func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	if _body_mesh != null:
+		_body_mesh.visible = false
+		_body_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	set_spawn_transform()
 	add_to_group("player") # группа вместо пути в сцене врага: путь был бы привязкой чужого файла к этому
 	# Порядок не произвольный: точка возрождения и здоровье должны быть готовы

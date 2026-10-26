@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://e2o7ylgyhauc"]
 
 [ext_resource type="PackedScene" uid="uid://b2tfi4xtvijuv" path="res://entities/player/player.tscn" id="1_player"]
-[ext_resource type="Material" path="res://levels/common/cad_grid_material.tres" id="2_cad_grid"]
-[ext_resource type="Material" uid="uid://cs3duboutpbln" path="res://levels/common/inverted_hull_material.tres" id="3_outline_mat"]
+[ext_resource type="Material" uid="uid://bio1qm27sy57q" path="res://levels/common/cad_grid_material.tres" id="2_cad_grid"]
+[ext_resource type="Material" path="res://levels/common/architectural_material.tres" id="3_outline_mat"]
 [ext_resource type="Script" uid="uid://ccdd7kao2dobf" path="res://levels/lobby/shop_point.gd" id="4_shop_script"]
 [ext_resource type="Script" uid="uid://c633dn78qj1c3" path="res://levels/lobby/door_point.gd" id="5_door_script"]
 
@@ -219,7 +219,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0)
 shape = SubResource("BoxShape3D_door")
 
 [node name="ShopPoint" type="Area3D" parent="." unique_id=1228750710 groups=["interactable"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.08, 0, -0.237)
 collision_layer = 32
 collision_mask = 2
 script = ExtResource("4_shop_script")

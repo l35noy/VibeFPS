@@ -261,7 +261,7 @@ func _spawn_boss_bullet(pos: Vector3, dir: Vector3) -> void:
 			instance.free()
 		return
 
-	bullet.speed = 30.0
+	bullet.speed = 35.0
 	bullet.damage = 20.0
 	bullet.color = Color(1.0, 0.15, 0.45)
 	bullet.radius = 0.14

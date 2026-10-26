@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://weapons/pistol/pistol.gd" id="1_auto_script"]
 [ext_resource type="Resource" path="res://data/weapons/auto.tres" id="2_auto_data"]
 [ext_resource type="PackedScene" path="res://weapons/projectile/projectile.tscn" id="3_auto_projectile"]
-[ext_resource type="Material" path="res://levels/common/inverted_hull_material.tres" id="4_hull_mat"]
+[ext_resource type="Material" path="res://weapons/weapon_body_material.tres" id="4_hull_mat"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_receiver"]
 size = Vector3(0.05, 0.07, 0.26)

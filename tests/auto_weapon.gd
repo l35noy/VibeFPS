@@ -38,10 +38,10 @@ const _PROJECTILE_SCENE_PATH := "res://weapons/projectile/projectile.tscn"
 const _EXPECTED_MAGAZINE := 36
 const _EXPECTED_INTERVAL := 0.2
 const _EXPECTED_DAMAGE := 15.0
-const _EXPECTED_SPEED := 70.0
-const _EXPECTED_RADIUS := 0.06
+const _EXPECTED_SPEED := 80.0
+const _EXPECTED_RADIUS := 0.04
 const _EXPECTED_PRICE := 300
-const _EXPECTED_COLOR := Color(0.95, 0.75, 0.15)
+const _EXPECTED_COLOR := Color(1.0, 1.0, 1.0)
 
 ## Предельное время ожидания в секундах.
 const _WAIT_CAP_SECONDS := 15.0
@@ -223,7 +223,7 @@ func _test_data_contract() -> void:
 		"радиус снаряда равен %.2f м" % _EXPECTED_RADIUS,
 		"(получено %.4f)" % _data.projectile_radius)
 	_check(_close_color(_data.projectile_color, _EXPECTED_COLOR),
-		"цвет снаряда соответствует желтому цвету автомата", "(получено %s)" % _data.projectile_color)
+		"цвет снаряда соответствует белому цвету автомата", "(получено %s)" % _data.projectile_color)
 
 
 ## Проверка сцены auto.tscn и её привязок.

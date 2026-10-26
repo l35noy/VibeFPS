@@ -86,14 +86,14 @@ func _initialize() -> void:
 	_check(data.magazine_size == 18, "magazine_size равен 18",
 		"(получено %d)" % data.magazine_size)
 	_check(data.reload_time == 1.2, "reload_time равен 1.2 с", "(получено %.4f)" % data.reload_time)
-	_check(data.projectile_speed == 70.0, "projectile_speed равен 70.0 м/с",
+	_check(data.projectile_speed == 80.0, "projectile_speed равен 80.0 м/с",
 		"(получено %.4f)" % data.projectile_speed)
-	_check(data.projectile_radius == 0.08, "projectile_radius равен 0.08 м",
+	_check(data.projectile_radius == 0.05, "projectile_radius равен 0.05 м",
 		"(получено %.4f)" % data.projectile_radius)
 	_check(data.projectile_lifetime == 4.0, "projectile_lifetime равен 4.0 с",
 		"(получено %.4f)" % data.projectile_lifetime)
-	_check(data.projectile_color == Color(0.15, 0.15, 0.15),
-		"projectile_color равен дефолтному Color(0.15, 0.15, 0.15)",
+	_check(data.projectile_color == Color(1.0, 1.0, 1.0),
+		"projectile_color равен белому Color(1.0, 1.0, 1.0)",
 		"(получено %s)" % data.projectile_color)
 
 	_check(data.projectile_speed > 0.0 and is_finite(data.projectile_speed),

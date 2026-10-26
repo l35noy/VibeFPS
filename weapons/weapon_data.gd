@@ -20,11 +20,11 @@ extends Resource
 ## окно, за которое цель успевает отойти. Это игровое правило из PROJECT.md
 ## §9.8, а не техническая деталь: мгновенный (хитскан) выстрел это окно
 ## убирает, и уклонение становится невозможным.
-@export var projectile_speed: float = 40.0
-@export var projectile_radius: float = 0.08
+@export var projectile_speed: float = 80.0
+@export var projectile_radius: float = 0.05
 @export var projectile_lifetime: float = 3.0
-## Цвет снаряда и шлейфа. Геометрический стиль: контрастная геометрия.
-@export var projectile_color: Color = Color(0.15, 0.15, 0.15)
+## Цвет снаряда и шлейфа. Белые светящиеся снаряды в монохромном архитектурном стиле.
+@export var projectile_color: Color = Color(1.0, 1.0, 1.0)
 ## Число дробинок в залпе (1 для обычного оружия, 10 для дробовика).
 @export var pellets: int = 1
 ## Угол конуса разлёта дробинок в градусах.

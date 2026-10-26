@@ -34,16 +34,15 @@ signal hit_something(target: Node)
 ## Радиус шлейфа в метрах. Приходит из данных оружия
 ## (WeaponData.projectile_radius): след показывает, где летит пуля, поэтому
 ## его размер обязан повторять размер снаряда.
-@export var radius: float = 0.08:
+@export var radius: float = 0.05:
 	set(value):
 		radius = value
 		if _trail != null:
 			_trail.mesh = get_shared_mesh(radius)
 
 ## Цвет шлейфа. Приходит из данных оружия (WeaponData.projectile_color):
-## след делает оружие узнаваемым на глаз — жёлтый автомат не спутать с
-## серым пистолетом.
-@export var color: Color = Color(0.15, 0.15, 0.15):
+## след делает оружие узнаваемым на глаз — яркие белые снаряды в монохромном стиле.
+@export var color: Color = Color(1.0, 1.0, 1.0):
 	set(value):
 		color = value
 		if _trail != null:
@@ -63,7 +62,7 @@ const DEFAULT_COLLISION_MASK := (1 << 0) | (1 << 3)
 const _COLLISION_MASK := DEFAULT_COLLISION_MASK
 
 ## Прозрачность шлейфа в начале полёта и её потолок.
-const _TRAIL_PEAK_ALPHA := 0.6
+const _TRAIL_PEAK_ALPHA := 0.95
 
 ## Статический кэш ресурсов шлейфа снарядов для предотвращения повторных аллокаций
 ## и обеспечения эффективного батчинга рендеринга Godot (R6).
@@ -96,7 +95,8 @@ static func get_shared_material(base_color: Color) -> StandardMaterial3D:
 	mat.metallic_specular = 0.0
 	mat.emission_enabled = true
 	mat.emission = base_color
-	mat.emission_energy_multiplier = 2.5
+	mat.emission_energy_multiplier = 3.0
+	mat.render_priority = 10
 	_material_cache[key] = mat
 	return mat
 

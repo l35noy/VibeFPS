@@ -744,7 +744,7 @@ func _test_trail_fades() -> void:
 					start_alpha, mid_alpha, int(life * float(_TICKS_PER_SECOND))])
 			_check(mid_alpha > 0.0, "затухание постепенное, снаряд не исчезает мгновенно",
 				"(alpha=%.3f)" % mid_alpha)
-			await _physics_frames(28)
+			await _physics_frames(26)
 			var end_alpha: float = material.albedo_color.a * (1.0 - trail.transparency)
 			_check(end_alpha < mid_alpha,
 				"затухание продолжается до конца времени жизни",

@@ -1,0 +1,7 @@
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://b7w8m4q1y5p2k"]
+
+[resource]
+resource_name = "WeaponBodyMaterial"
+albedo_color = Color(0.92, 0.92, 0.94, 1)
+metallic_specular = 0.0
+roughness = 0.9

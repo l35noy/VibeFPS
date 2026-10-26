@@ -23,7 +23,7 @@ const _EXPECTED_PRICE := 600
 const _EXPECTED_DAMAGE := 12.0
 const _EXPECTED_MAGAZINE := 2
 const _EXPECTED_RELOAD_TIME := 1.1
-const _EXPECTED_SPEED := 70.0
+const _EXPECTED_SPEED := 80.0
 const _EXPECTED_PELLETS := 10
 const _EXPECTED_SPREAD_DEG := 4.5
 const _EXPECTED_TOTAL_DAMAGE := 120.0
@@ -137,7 +137,7 @@ func _test_burst_mechanics() -> void:
 	for p in pellets:
 		if p is Projectile:
 			var bullet := p as Projectile
-			if not is_equal_approx(bullet.speed, 70.0) or not is_equal_approx(bullet.damage, 12.0):
+			if not is_equal_approx(bullet.speed, 80.0) or not is_equal_approx(bullet.damage, 12.0):
 				all_stats_correct = false
 			var bullet_dir: Vector3 = (bullet.get("_direction") as Vector3) if bullet.get("_direction") != null else Vector3.FORWARD
 			var angle: float = forward.angle_to(bullet_dir)

@@ -62,8 +62,21 @@ func _test_scene_setup(world: Node3D, player: CharacterBody3D) -> void:
 	_check(world.get_node_or_null("WorldEnvironment") != null, "узел WorldEnvironment существует")
 	var cam := player.get_node_or_null("Camera3D") as Camera3D
 	_check(cam != null and cam.current, "Camera3D существует и активна")
-	if cam != null and cam.current and cam.global_position.y < 1.5:
-		_warn("камера находится ниже уровня глаз (%.2f м)" % cam.global_position.y)
+	if cam != null:
+		_check(is_equal_approx(cam.position.y, 1.7), "камера находится на оптимальном уровне глаз (1.7 м)",
+			"(y=%.3f м)" % cam.position.y)
+		var edge_detection := cam.get_node_or_null("EdgeDetection") as MeshInstance3D
+		_check(edge_detection != null, "пост-процесс EdgeDetection прикреплён к Camera3D")
+	_check(ResourceLoader.exists("res://levels/common/edge_detection.gdshader"),
+		"шейдер res://levels/common/edge_detection.gdshader существует")
+	_check(ResourceLoader.exists("res://weapons/weapon_body_material.tres"),
+		"материал оружия res://weapons/weapon_body_material.tres существует")
+	var body_mesh := player.get_node_or_null("BodyMesh") as MeshInstance3D
+	_check(body_mesh != null, "узел BodyMesh существует")
+	if body_mesh != null:
+		_check(not body_mesh.visible, "тело игрока (BodyMesh) невидимо")
+		_check(body_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
+			"тело игрока (BodyMesh) не отбрасывает тень (cast_shadow == OFF)")
 
 
 func _test_sky_background(world: Node3D) -> void:

@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://weapons/shotgun/shotgun.gd" id="1_shotgun_script"]
 [ext_resource type="Resource" path="res://data/weapons/shotgun.tres" id="2_shotgun_data"]
 [ext_resource type="PackedScene" path="res://weapons/projectile/projectile.tscn" id="3_projectile"]
-[ext_resource type="Material" path="res://levels/common/inverted_hull_material.tres" id="4_hull_mat"]
+[ext_resource type="Material" path="res://weapons/weapon_body_material.tres" id="4_hull_mat"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_barrel"]
 top_radius = 0.012

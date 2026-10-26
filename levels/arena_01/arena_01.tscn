@@ -5,7 +5,7 @@
 [ext_resource type="Script" path="res://levels/common/wave_manager.gd" id="3_wave_script"]
 [ext_resource type="Script" path="res://levels/lobby/door_point.gd" id="4_door_script"]
 [ext_resource type="Material" path="res://levels/common/cad_grid_material.tres" id="5_cad_grid"]
-[ext_resource type="Material" path="res://levels/common/inverted_hull_material.tres" id="6_outline_mat"]
+[ext_resource type="Material" path="res://levels/common/architectural_material.tres" id="6_outline_mat"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_arena"]
 sky_top_color = Color(0.85, 0.9, 0.96, 1)

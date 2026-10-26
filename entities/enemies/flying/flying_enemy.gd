@@ -15,7 +15,7 @@ signal died()
 @export var hover_height: float = 3.0
 @export var preferred_distance: float = 9.0
 @export var projectile_damage: float = 15.0
-@export var projectile_speed: float = 35.0
+@export var projectile_speed: float = 40.0
 
 const _LAYER_WORLD := 1 << 0
 const _LAYER_ENEMY_BODY := 1 << 2

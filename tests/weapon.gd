@@ -70,7 +70,7 @@ const _PISTOL_SCENE_PATH := "res://weapons/pistol/pistol.tscn"
 const _EXPECTED_MAGAZINE := 18
 const _EXPECTED_RELOAD_TIME := 1.2
 const _EXPECTED_INTERVAL := 0.4
-const _EXPECTED_PROJECTILE_SPEED := 70.0
+const _EXPECTED_PROJECTILE_SPEED := 80.0
 const _EXPECTED_DAMAGE := 30.0
 const _EXPECTED_LIFETIME := 4.0
 

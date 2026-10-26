@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3 uid="uid://c8q4v7y2m1p0x"]
+
+[ext_resource type="Shader" path="res://levels/common/edge_detection.gdshader" id="1_shader"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/line_color = Color(0.08, 0.09, 0.1, 1)
+shader_parameter/line_width = 1.0
+shader_parameter/normal_threshold = 0.28
+shader_parameter/normal_smoothing = 0.08
+shader_parameter/depth_base_threshold = 0.008
+shader_parameter/depth_distance_factor = 0.0025
+shader_parameter/depth_smoothing = 0.008
