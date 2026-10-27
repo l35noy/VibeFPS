@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://b2tfi4xtvijuv" path="res://entities/player/player.tscn" id="1_player"]
 [ext_resource type="Material" uid="uid://bio1qm27sy57q" path="res://levels/common/cad_grid_material.tres" id="2_cad_grid"]
-[ext_resource type="Material" path="res://levels/common/architectural_material.tres" id="3_outline_mat"]
+[ext_resource type="Material" path="res://levels/common/architectural_material.tres" id="3_arch_mat"]
 [ext_resource type="Script" uid="uid://ccdd7kao2dobf" path="res://levels/lobby/shop_point.gd" id="4_shop_script"]
 [ext_resource type="Script" uid="uid://c633dn78qj1c3" path="res://levels/lobby/door_point.gd" id="5_door_script"]
 
@@ -143,7 +143,7 @@ collision_mask = 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Columns/Column1" unique_id=702973442]
 mesh = SubResource("BoxMesh_column")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Columns/Column1" unique_id=1689734085]
 shape = SubResource("BoxShape3D_column")
@@ -154,7 +154,7 @@ collision_mask = 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Columns/Column2" unique_id=911933484]
 mesh = SubResource("BoxMesh_column")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Columns/Column2" unique_id=1825594949]
 shape = SubResource("BoxShape3D_column")
@@ -165,7 +165,7 @@ collision_mask = 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Columns/Column3" unique_id=314345948]
 mesh = SubResource("BoxMesh_column")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Columns/Column3" unique_id=1675405581]
 shape = SubResource("BoxShape3D_column")
@@ -176,7 +176,7 @@ collision_mask = 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Columns/Column4" unique_id=835698749]
 mesh = SubResource("BoxMesh_column")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Columns/Column4" unique_id=1387537815]
 shape = SubResource("BoxShape3D_column")
@@ -187,7 +187,7 @@ collision_mask = 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Columns/Column5" unique_id=484071455]
 mesh = SubResource("BoxMesh_column")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Columns/Column5" unique_id=1049951591]
 shape = SubResource("BoxShape3D_column")
@@ -198,7 +198,7 @@ collision_mask = 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Columns/Column6" unique_id=1313067850]
 mesh = SubResource("BoxMesh_column")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Columns/Column6" unique_id=1851965087]
 shape = SubResource("BoxShape3D_column")
@@ -212,7 +212,7 @@ script = ExtResource("5_door_script")
 [node name="Mesh" type="MeshInstance3D" parent="DoorPoint" unique_id=218169930]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
 mesh = SubResource("BoxMesh_door")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="DoorPoint" unique_id=1353886473]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0)
@@ -227,7 +227,7 @@ script = ExtResource("4_shop_script")
 [node name="Mesh" type="MeshInstance3D" parent="ShopPoint" unique_id=1374703313]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
 mesh = SubResource("BoxMesh_shop")
-surface_material_override/0 = ExtResource("3_outline_mat")
+surface_material_override/0 = ExtResource("3_arch_mat")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="ShopPoint" unique_id=199206856]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)

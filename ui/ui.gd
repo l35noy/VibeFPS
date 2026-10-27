@@ -41,6 +41,31 @@ var _is_reloading: bool = false
 @onready var _defeat_btn: Button = get_node_or_null("DefeatPanel/VBox/LobbyButton") as Button
 @onready var _victory_panel: Control = get_node_or_null("VictoryPanel") as Control
 @onready var _victory_btn: Button = get_node_or_null("VictoryPanel/VBox/LobbyButton") as Button
+@onready var _crosshair: Control = get_node_or_null("Crosshair") as Control
+
+
+func _process(_delta: float) -> void:
+	# Скрываем прицел при открытых модальных окнах (магазин, инвентарь, экраны победы/поражения)
+	var ch := get_crosshair()
+	if ch != null:
+		var should_show := not is_modal_open()
+		if ch.visible != should_show:
+			ch.visible = should_show
+
+
+## Получить узел прицела
+func get_crosshair() -> Control:
+	if _crosshair != null:
+		return _crosshair
+	_crosshair = get_node_or_null("Crosshair") as Control
+	return _crosshair
+
+
+## Управление видимостью прицела (скрывается в модальных окнах)
+func set_crosshair_visible(is_visible: bool) -> void:
+	var ch := get_crosshair()
+	if ch != null and ch.visible != is_visible:
+		ch.visible = is_visible
 
 
 func _ready() -> void:
@@ -91,11 +116,16 @@ func set_interaction_prompt(prompt_text: String) -> void:
 	if prompt == null:
 		return
 	if prompt_text.is_empty() or is_modal_open():
-		prompt.visible = false
-		prompt.text = ""
+		if prompt.visible:
+			prompt.visible = false
+		if not prompt.text.is_empty():
+			prompt.text = ""
 	else:
-		prompt.visible = true
-		prompt.text = "[E] " + prompt_text
+		var target_text := "[E] " + prompt_text
+		if not prompt.visible:
+			prompt.visible = true
+		if prompt.text != target_text:
+			prompt.text = target_text
 
 
 ## Обновление видимости подсказки взаимодействия (скрыть при открытом модальном окне).

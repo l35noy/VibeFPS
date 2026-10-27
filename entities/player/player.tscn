@@ -47,8 +47,8 @@ cast_shadow = 0
 mesh = SubResource("QuadMesh_edge_detection")
 surface_material_override/0 = ExtResource("6_edge_mat")
 
-[node name="Pistol" parent="." unique_id=452584642 instance=ExtResource("3_pistol")]
-transform = Transform3D(0.9950042, -0.0049895914, 0.099708654, 0, 0.99875027, 0.04997917, -0.09983342, -0.04972948, 0.9937607, 0.16, 1.5, -0.45)
+[node name="Pistol" parent="Camera3D" unique_id=452584642 instance=ExtResource("3_pistol")]
+transform = Transform3D(0.9950042, -0.0049895914, 0.099708654, 0, 0.99875027, 0.04997917, -0.09983342, -0.04972948, 0.9937607, 0.16, -0.2, -0.45)
 
 [node name="Hurtbox" type="Area3D" parent="." unique_id=1704705138]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)

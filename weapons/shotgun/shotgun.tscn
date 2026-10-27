@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://weapons/shotgun/shotgun.gd" id="1_shotgun_script"]
 [ext_resource type="Resource" path="res://data/weapons/shotgun.tres" id="2_shotgun_data"]
 [ext_resource type="PackedScene" path="res://weapons/projectile/projectile.tscn" id="3_projectile"]
-[ext_resource type="Material" path="res://weapons/weapon_body_material.tres" id="4_hull_mat"]
+[ext_resource type="Material" path="res://weapons/weapon_body_material.tres" id="4_weapon_mat"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_barrel"]
 top_radius = 0.012
@@ -30,32 +30,32 @@ projectile_scene = ExtResource("3_projectile")
 [node name="Receiver" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.05)
 mesh = SubResource("BoxMesh_receiver")
-surface_material_override/0 = ExtResource("4_hull_mat")
+surface_material_override/0 = ExtResource("4_weapon_mat")
 
 [node name="LeftBarrel" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, -0.016, 0.01, -0.15)
 mesh = SubResource("CylinderMesh_barrel")
-surface_material_override/0 = ExtResource("4_hull_mat")
+surface_material_override/0 = ExtResource("4_weapon_mat")
 
 [node name="RightBarrel" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0.016, 0.01, -0.15)
 mesh = SubResource("CylinderMesh_barrel")
-surface_material_override/0 = ExtResource("4_hull_mat")
+surface_material_override/0 = ExtResource("4_weapon_mat")
 
 [node name="Forend" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.02, -0.12)
 mesh = SubResource("BoxMesh_forend")
-surface_material_override/0 = ExtResource("4_hull_mat")
+surface_material_override/0 = ExtResource("4_weapon_mat")
 
 [node name="Stock" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.984808, 0.173648, 0, -0.173648, 0.984808, 0, -0.04, 0.2)
 mesh = SubResource("BoxMesh_stock")
-surface_material_override/0 = ExtResource("4_hull_mat")
+surface_material_override/0 = ExtResource("4_weapon_mat")
 
 [node name="TriggerGuard" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0.05)
 mesh = SubResource("BoxMesh_trigger_guard")
-surface_material_override/0 = ExtResource("4_hull_mat")
+surface_material_override/0 = ExtResource("4_weapon_mat")
 
 [node name="Muzzle" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, -0.33)

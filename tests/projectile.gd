@@ -114,6 +114,7 @@ func _initialize() -> void:
 	await _test_two_contacts_in_one_frame()
 	await _test_trail_fades()
 	await _test_shared_graphic_resources()
+	await _test_collision_shape_radius_sync()
 	_test_source_contract()
 
 	_finish()
@@ -809,3 +810,41 @@ func _test_source_contract() -> void:
 		"(найдено: %s)" % ("ничего" if used.is_empty() else str(used)))
 	_check(source.contains("set_deferred(\"monitoring\""),
 		"projectile.gd отключает monitoring через set_deferred, а не напрямую в обработчике")
+
+
+## Проверка синхронизации радиуса коллизии CollisionShape3D со значением projectile.radius (120 Гц контракт).
+func _test_collision_shape_radius_sync() -> void:
+	print("-- collision shape sync: проверка синхронизации радиуса формы коллизии с размером снаряда")
+	var scene := load("res://weapons/projectile/projectile.tscn") as PackedScene
+	_check(scene != null, "сцена res://weapons/projectile/projectile.tscn существует")
+	if scene == null:
+		return
+
+	var p1 := scene.instantiate() as Projectile
+	root.add_child(p1)
+	await _physics_frames(2)
+
+	var shape_node := p1.get_node_or_null("Shape") as CollisionShape3D
+	_check(shape_node != null and shape_node.shape is SphereShape3D,
+		"снаряд содержит узел Shape с формой SphereShape3D")
+	if shape_node != null and shape_node.shape is SphereShape3D:
+		var orig_radius: float = (shape_node.shape as SphereShape3D).radius
+		_check(is_equal_approx(orig_radius, 0.05), "начальный радиус коллизии равен 0.05 м", "(получено %.3f)" % orig_radius)
+
+		# Изменяем радиус снаряда: форма коллизии должна синхронизироваться
+		p1.radius = 0.15
+		var updated_radius: float = (shape_node.shape as SphereShape3D).radius
+		_check(is_equal_approx(updated_radius, 0.15),
+			"сеттер radius обновляет радиус CollisionShape3D до 0.15 м", "(получено %.3f)" % updated_radius)
+
+		# Проверяем изоляцию формы: второй снаряд не должен пострадать от изменения первого
+		var p2 := scene.instantiate() as Projectile
+		root.add_child(p2)
+		await _physics_frames(2)
+		var p2_shape := (p2.get_node("Shape") as CollisionShape3D).shape as SphereShape3D
+		_check(is_equal_approx(p2_shape.radius, 0.05),
+			"изменение радиуса одного снаряда не затрагивает другие инстансы (изоляция duplicate())",
+			"(получено %.3f)" % p2_shape.radius)
+		p2.free()
+
+	p1.free()

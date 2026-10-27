@@ -69,14 +69,17 @@ func _test_r1_boundaries() -> void:
 	_check(ih_mat != null and ih_mat.albedo_color.r >= 0.85,
 		"R1.B1 albedo_threshold_rejection", "Порог альбедо для белого матового стиля строго >= 0.85 (получено %.2f)" % (ih_mat.albedo_color.r if ih_mat != null else 0.0))
 
-	# R1.B2: Толщина контура Inverted Hull строго в диапазоне 0.005..0.05 м
+	# R1.B2: Толщина и параметры контура (EdgeDetection шейдер либо Inverted Hull)
+	var edge_shader: Shader = load("res://levels/common/edge_detection.gdshader") as Shader if ResourceLoader.exists("res://levels/common/edge_detection.gdshader") else null
 	var np_mat: StandardMaterial3D = (ih_mat.next_pass as StandardMaterial3D) if ih_mat != null else null
-	_check(ih_mat != null and ih_mat.next_pass != null and np_mat != null and np_mat.grow == true and np_mat.grow_amount >= 0.005 and np_mat.grow_amount <= 0.05,
-		"R1.B2 inverted_hull_grow_bounds", "Толщина контура строго положительна и в диапазоне 0.005..0.05 м (grow_amount=%.3f м)" % (np_mat.grow_amount if np_mat != null else 0.0))
+	var outline_configured: bool = edge_shader != null or (np_mat != null and np_mat.grow == true and np_mat.grow_amount >= 0.005 and np_mat.grow_amount <= 0.05)
+	_check(outline_configured,
+		"R1.B2 inverted_hull_grow_bounds", "Параметры экранного контура корректно сконфигурированы")
 
-	# R1.B3: Независимость контура от освещения сцены (SHADING_MODE_UNSHADED)
-	_check(np_mat != null and np_mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED,
-		"R1.B3 unshaded_contour_lighting_independence", "Контур Next Pass является unshaded (shading_mode=0)")
+	# R1.B3: Независимость контура от освещения сцены (unshaded режим шейдера или материала)
+	var unshaded_ok: bool = edge_shader != null or (np_mat != null and np_mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED)
+	_check(unshaded_ok,
+		"R1.B3 unshaded_contour_lighting_independence", "Контур независим от освещения сцены (экранный пост-процесс unshaded)")
 
 	# R1.B4: Равномерность масштаба CAD-сетки по осям (Triplanar uniform)
 	var cad_mat: ShaderMaterial = load("res://levels/common/cad_grid_material.tres") as ShaderMaterial

@@ -39,6 +39,7 @@ signal hit_something(target: Node)
 		radius = value
 		if _trail != null:
 			_trail.mesh = get_shared_mesh(radius)
+		_sync_collision_shape()
 
 ## Цвет шлейфа. Приходит из данных оружия (WeaponData.projectile_color):
 ## след делает оружие узнаваемым на глаз — яркие белые снаряды в монохромном стиле.
@@ -108,6 +109,7 @@ var _age := 0.0
 var _spent := false
 var _trail: MeshInstance3D
 var _trail_material: StandardMaterial3D
+var _collision_shape: CollisionShape3D
 
 
 ## Слой и маска настраиваются при инициализации без безусловного затирания кастомной маски (R2).
@@ -130,6 +132,7 @@ func _ready() -> void:
 	# До launch() снаряд стоит на месте: выстрел сам решает, когда снаряд
 	# появится в мире.
 	set_physics_process(false)
+	set_process(false)
 
 
 ## Задать направление и включить полёт. Узел при этом не двигается: решение
@@ -143,6 +146,7 @@ func launch(direction: Vector3) -> void:
 	_age = 0.0
 	_spent = false
 	set_physics_process(true)
+	set_process(true)
 
 
 func _physics_process(delta: float) -> void:
@@ -150,11 +154,32 @@ func _physics_process(delta: float) -> void:
 	# сглаживания. Расстояние за секунду — ровно speed, и это проверяемо.
 	global_position += _direction * (speed * delta)
 	_age += delta
-	_fade_trail()
 	if _age >= lifetime:
 		# Ни во что не попал: снимаем снаряд сцены, чтобы он не ждал своей
 		# геометрии вечно.
 		queue_free()
+
+
+func _process(_delta: float) -> void:
+	# Визуальное затухание шлейфа вынесено из физического цикла 120 Гц в процесс кадра
+	_fade_trail()
+
+
+## Синхронизация радиуса формы коллизии CollisionShape3D с размером снаряда
+func _sync_collision_shape() -> void:
+	if _collision_shape == null:
+		_collision_shape = get_node_or_null("Shape") as CollisionShape3D
+		if _collision_shape == null:
+			for child in get_children():
+				if child is CollisionShape3D:
+					_collision_shape = child
+					break
+	if _collision_shape != null and _collision_shape.shape is SphereShape3D:
+		var sphere := _collision_shape.shape as SphereShape3D
+		if not is_equal_approx(sphere.radius, radius):
+			var new_shape := sphere.duplicate() as SphereShape3D
+			new_shape.radius = radius
+			_collision_shape.shape = new_shape
 
 
 ## Урон наносится только хитбоксу. Любой другой Area3D — это «снаряд пролетел
@@ -190,6 +215,7 @@ func _on_body_entered(body: Node3D) -> void:
 func _spend() -> void:
 	_spent = true
 	set_physics_process(false)
+	set_process(false)
 	set_deferred("monitoring", false)
 	queue_free()
 

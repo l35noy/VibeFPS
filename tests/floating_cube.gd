@@ -130,15 +130,13 @@ func _test_monochrome_outline_material() -> void:
 			_check(mat.roughness >= 0.8 and is_equal_approx(mat.metallic_specular, 0.0),
 				"Материал матовый без бликов (roughness=%.2f, specular=%.2f)" % [mat.roughness, mat.metallic_specular])
 
-			var outline: StandardMaterial3D = mat.next_pass as StandardMaterial3D
-			_check(outline != null, "Материал содержит next_pass контура")
-			if outline != null:
-				_check(outline.cull_mode == BaseMaterial3D.CULL_FRONT,
-					"Контур использует инвертированное отсечение (Inverted Hull / CULL_FRONT)")
-				_check(outline.albedo_color == Color(0, 0, 0, 1),
-					"Цвет контура строго чёрный Color(0, 0, 0, 1)")
-				_check(outline.grow and outline.grow_amount > 0.0,
-					"Контур имеет активное расширение grow=true (величина %.3f м)" % outline.grow_amount)
+			_check(mat.next_pass == null, "Материал очищен от устаревшего Inverted Hull next_pass (контур обеспечивается EdgeDetection)")
+			_check(ResourceLoader.exists("res://levels/common/edge_detection.gdshader"),
+				"Шейдер пост-процесса контуров res://levels/common/edge_detection.gdshader существует")
+			_check(ResourceLoader.exists("res://levels/common/edge_detection_material.tres"),
+				"Материал пост-процесса res://levels/common/edge_detection_material.tres существует")
+			_check(ResourceLoader.exists("res://levels/common/inverted_hull_material.tres"),
+				"Базовый монохромный материал res://levels/common/inverted_hull_material.tres существует")
 
 	enemy.free()
 

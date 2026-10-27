@@ -144,6 +144,17 @@ func _test_scene_contract() -> void:
 		_check(not reload_label.visible, "ReloadLabel изначально скрыт (visible = false)")
 		_check(reload_label.text == "ПЕРЕЗАРЯДКА...",
 			"ReloadLabel содержит текст 'ПЕРЕЗАРЯДКА...'", "(получено '%s')" % reload_label.text)
+	_check(ui.get_node_or_null("Crosshair") is Control, "Crosshair является Control")
+	var crosshair := ui.get_node_or_null("Crosshair") as Control
+	if crosshair != null:
+		_check(crosshair is Crosshair, "Crosshair использует скрипт crosshair.gd")
+		_check(crosshair.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Crosshair игнорирует события мыши")
+		var ch := crosshair as Crosshair
+		_check(ch.dot_radius > 0.0 and ch.outline_width > 0.0, "Прицел имеет положительный радиус точки и толщину обводки")
+		ui.call("set_crosshair_visible", false)
+		_check(not crosshair.visible, "set_crosshair_visible(false) скрывает прицел")
+		ui.call("set_crosshair_visible", true)
+		_check(crosshair.visible, "set_crosshair_visible(true) показывает прицел")
 	ui.queue_free()
 	await physics_frame
 
@@ -169,7 +180,7 @@ func _test_player_wiring() -> void:
 		"player.gd предоставляет метод current_weapon()")
 	_check(player.has_signal("weapon_changed"),
 		"player.gd предоставляет сигнал weapon_changed")
-	var pistol := player.get_node_or_null("Pistol")
+	var pistol: Node = player.get_node_or_null("Camera3D/Pistol") if player.get_node_or_null("Camera3D/Pistol") != null else player.get_node_or_null("Pistol")
 	_check(player.current_weapon() == pistol,
 		"current_weapon() возвращает узел Pistol",
 		"(получено %s)" % ("null" if player.current_weapon() == null else player.current_weapon().name))

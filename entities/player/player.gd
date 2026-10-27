@@ -50,18 +50,28 @@ var _health: float = 0.0
 ## `/root/GameState` не разрешается. Без автозагрузки остаётся null.
 var _game_state: Node = null
 
-@onready var _camera: Camera3D = $Camera3D
+@onready var _camera: Camera3D = get_node_or_null("Camera3D") as Camera3D
 ## Меш капсулы тела игрока. В виде от первого лица невидим и не отбрасывает тень.
 @onready var _body_mesh: MeshInstance3D = get_node_or_null("BodyMesh") as MeshInstance3D
 ## Пистолет игрока. Может отсутствовать: лобби Фазы 4 и любые сцены без
 ## оружия создают того же персонажа, и требовать в каждой из них узел с
 ## характеристиками оружия было бы требованием к сцене, а не к игроку.
-@onready var _pistol: Pistol = get_node_or_null("Pistol") as Pistol
+@onready var _pistol: Pistol = _find_pistol_slot()
 ## Хитбокс игрока. Может отсутствовать по той же причине, что и пистолет:
 ## подключение урона — это проводка сцены, и сцена без хитбокса (лобби, отладочные
 ## макетки) обязана оставаться рабочей, а не падать в _ready().
 @onready var _hurtbox: Hurtbox = get_node_or_null("Hurtbox") as Hurtbox
 @onready var _ui: CanvasLayer = get_node_or_null("UI") as CanvasLayer
+var _last_interaction_prompt: String = ""
+
+
+## Поиск слота оружия: сначала под Camera3D (привязка к обзору камеры), затем прямой дочерний узел (fallback)
+func _find_pistol_slot() -> Pistol:
+	if _camera != null:
+		var cam_p := _camera.get_node_or_null("Pistol") as Pistol
+		if cam_p != null:
+			return cam_p
+	return get_node_or_null("Pistol") as Pistol
 
 
 func _ready() -> void:
@@ -141,14 +151,15 @@ func apply_equipped_weapon() -> void:
 	var slot := _pistol
 	var hand_transform := slot.transform
 	var slot_index := slot.get_index()
+	var slot_parent: Node = slot.get_parent() if slot.get_parent() != null else self
 	# Сначала освободить имя у старого слота, потом занять его новым: add_child()
 	# при конфликте имён молча переименовал бы новый узел в "Pistol2", и слот
 	# перестал бы находиться по имени.
-	remove_child(slot)
+	slot_parent.remove_child(slot)
 	replacement.name = "Pistol"
 	replacement.transform = hand_transform
-	add_child(replacement)
-	move_child(replacement, slot_index)
+	slot_parent.add_child(replacement)
+	slot_parent.move_child(replacement, slot_index)
 	slot.queue_free()
 	_pistol = replacement
 	_pistol.reset_for_scene_change()
@@ -349,9 +360,12 @@ func _toggle_mouse_capture() -> void:
 ## Публичный: окрестностям лобби (подсветка точки) он понадобится, а тесту —
 ## чтобы зафиксировать сам радиус.
 func nearest_interactable() -> Node:
+	var tree := get_tree()
+	if tree == null:
+		return null
 	var nearest: Node = null
 	var nearest_dist := _INTERACT_RANGE
-	for node in get_tree().get_nodes_in_group("interactable"):
+	for node in tree.get_nodes_in_group("interactable"):
 		# Точка взаимодействия — Area3D, а значит Node3D; узел без мировой
 		# позиции в выборку не попадёт. Проверка на дерево — чтобы узел,
 		# ожидающий удаления, не попал в ответ.
@@ -422,17 +436,6 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	if _ui != null and _ui.has_method("set_interaction_prompt"):
-		if is_modal_active():
-			_ui.call("set_interaction_prompt", "")
-		else:
-			var nearest: Node = nearest_interactable()
-			if nearest != null and (nearest as Node3D).is_visible_in_tree() and nearest.has_method("get_interaction_prompt"):
-				var prompt_text: String = str(nearest.call("get_interaction_prompt"))
-				_ui.call("set_interaction_prompt", prompt_text)
-			else:
-				_ui.call("set_interaction_prompt", "")
-
 	if global_position.y < fall_limit:
 		# Падение за kill-plane — это смерть, а не тихий респавн: здоровье
 		# обнуляется ДО сигнала, чтобы подписчик died увидел мёртвого игрока
@@ -445,6 +448,22 @@ func _physics_process(delta: float) -> void:
 			_health = 0.0
 			health_changed.emit(_health, max_health)
 			_die("fall")
+
+
+func _process(_delta: float) -> void:
+	_update_interaction_prompt()
+
+
+func _update_interaction_prompt() -> void:
+	if _ui != null and _ui.has_method("set_interaction_prompt"):
+		var prompt_text := ""
+		if not is_modal_active():
+			var nearest: Node = nearest_interactable()
+			if nearest != null and (nearest as Node3D).is_visible_in_tree() and nearest.has_method("get_interaction_prompt"):
+				prompt_text = str(nearest.call("get_interaction_prompt"))
+		if prompt_text != _last_interaction_prompt:
+			_last_interaction_prompt = prompt_text
+			_ui.call("set_interaction_prompt", prompt_text)
 
 
 ## Возврат на точку появления. Fallback-механика: вызывается из _die() только

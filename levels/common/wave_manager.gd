@@ -37,6 +37,7 @@ enum State {
 var _current_wave: int = 0
 var _state: State = State.IDLE
 var _intermission_timer: float = 0.0
+var _last_emitted_intermission_second: int = -1
 var _spawn_timer: float = 0.0
 
 var _spawn_queue: Array[PackedScene] = []
@@ -124,9 +125,12 @@ func _process_spawning(delta: float) -> void:
 
 func _process_intermission(delta: float) -> void:
 	_intermission_timer -= delta
-	intermission_tick.emit(maxf(0.0, _intermission_timer))
-	if _ui != null and _ui.has_method("set_intermission"):
-		_ui.call("set_intermission", maxf(0.0, _intermission_timer))
+	var current_second := int(ceil(maxf(0.0, _intermission_timer)))
+	if current_second != _last_emitted_intermission_second:
+		_last_emitted_intermission_second = current_second
+		intermission_tick.emit(maxf(0.0, _intermission_timer))
+		if _ui != null and _ui.has_method("set_intermission"):
+			_ui.call("set_intermission", maxf(0.0, _intermission_timer))
 
 	if _intermission_timer <= 0.0:
 		_intermission_timer = 0.0
@@ -264,6 +268,7 @@ func _check_wave_completion() -> void:
 func _start_intermission() -> void:
 	_state = State.INTERMISSION
 	_intermission_timer = intermission_duration
+	_last_emitted_intermission_second = -1
 	intermission_started.emit(intermission_duration)
 
 

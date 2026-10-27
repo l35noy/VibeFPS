@@ -5,7 +5,7 @@
 [ext_resource type="Script" path="res://levels/common/wave_manager.gd" id="3_wave_script"]
 [ext_resource type="Script" path="res://levels/lobby/door_point.gd" id="4_door_script"]
 [ext_resource type="Material" path="res://levels/common/cad_grid_material.tres" id="5_cad_grid"]
-[ext_resource type="Material" path="res://levels/common/architectural_material.tres" id="6_outline_mat"]
+[ext_resource type="Material" path="res://levels/common/architectural_material.tres" id="6_arch_mat"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_arena"]
 sky_top_color = Color(0.85, 0.9, 0.96, 1)
@@ -141,7 +141,7 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover1"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = ExtResource("6_outline_mat")
+surface_material_override/0 = ExtResource("6_arch_mat")
 
 [node name="Cover2" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 2, -10)
@@ -153,7 +153,7 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover2"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = ExtResource("6_outline_mat")
+surface_material_override/0 = ExtResource("6_arch_mat")
 
 [node name="Cover3" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 2, 10)
@@ -165,7 +165,7 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover3"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = ExtResource("6_outline_mat")
+surface_material_override/0 = ExtResource("6_arch_mat")
 
 [node name="Cover4" type="StaticBody3D" parent="NavigationRegion3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 2, 10)
@@ -177,7 +177,7 @@ shape = SubResource("BoxShape3D_pillar")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="NavigationRegion3D/Cover4"]
 mesh = SubResource("BoxMesh_pillar")
-surface_material_override/0 = ExtResource("6_outline_mat")
+surface_material_override/0 = ExtResource("6_arch_mat")
 
 [node name="Player" parent="." instance=ExtResource("2_player_scene")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 16)
@@ -212,4 +212,4 @@ shape = SubResource("BoxShape3D_portal")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="ExitPortal"]
 mesh = SubResource("BoxMesh_portal")
-surface_material_override/0 = ExtResource("6_outline_mat")
+surface_material_override/0 = ExtResource("6_arch_mat")

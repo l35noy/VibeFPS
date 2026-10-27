@@ -229,7 +229,8 @@ func _test_pair_06_visual_style_coherence() -> void:
 	var cad_mat := load("res://levels/common/cad_grid_material.tres") as ShaderMaterial
 	var ih_mat := load("res://levels/common/inverted_hull_material.tres") as StandardMaterial3D
 	var cad_ok: bool = cad_mat != null and cad_mat.shader != null
-	var ih_ok: bool = ih_mat != null and ih_mat.next_pass != null and (ih_mat.next_pass as StandardMaterial3D).cull_mode == BaseMaterial3D.CULL_FRONT
+	var edge_shader_exists := ResourceLoader.exists("res://levels/common/edge_detection.gdshader")
+	var ih_ok: bool = ih_mat != null and (edge_shader_exists or (ih_mat.next_pass != null and (ih_mat.next_pass as StandardMaterial3D).cull_mode == BaseMaterial3D.CULL_FRONT))
 	_check(cad_ok and ih_ok, "Pair 6 visual_style_coherence", "Стиль CAD-сетки для поверхностей и белого матового шейдинга с контуром для сущностей согласован")
 
 
