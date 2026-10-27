@@ -6,15 +6,15 @@ render_mode unshaded, cull_disabled, depth_test_disabled, fog_disabled;
 // Оптимизировано: кэширование 9 выборок глубины на пиксель + сглаживание силуэта неба (антиалиасинг)
 
 uniform sampler2D depth_texture : hint_depth_texture, filter_nearest;
-uniform sampler2D normal_roughness_texture : hint_normal_roughness_texture, filter_nearest;
+uniform sampler2D normal_roughness_texture : hint_normal_roughness_texture, filter_linear;
 
 uniform vec4 line_color : source_color = vec4(0.08, 0.09, 0.10, 1.0);
-uniform float line_width : hint_range(0.5, 3.0) = 1.0;
+uniform float line_width : hint_range(0.5, 3.0) = 1.25;
 uniform float normal_threshold : hint_range(0.05, 0.8) = 0.28;
-uniform float normal_smoothing : hint_range(0.01, 0.3) = 0.08;
+uniform float normal_smoothing : hint_range(0.01, 0.3) = 0.14;
 uniform float depth_base_threshold : hint_range(0.002, 0.05) = 0.008;
 uniform float depth_distance_factor : hint_range(0.0005, 0.01) = 0.0025;
-uniform float depth_smoothing : hint_range(0.002, 0.05) = 0.008;
+uniform float depth_smoothing : hint_range(0.002, 0.05) = 0.015;
 
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
@@ -68,7 +68,8 @@ void fragment() {
 		vec3 n_gx = ((n_tr + 2.0 * n_r + n_br) - (n_tl + 2.0 * n_l + n_bl)) * 0.25;
 		vec3 n_gy = ((n_bl + 2.0 * n_b + n_br) - (n_tl + 2.0 * n_t + n_tr)) * 0.25;
 		float normal_grad = sqrt(dot(n_gx, n_gx) + dot(n_gy, n_gy));
-		normal_edge = smoothstep(normal_threshold, normal_threshold + normal_smoothing, normal_grad);
+		float n_smooth = max(normal_smoothing, fwidth(normal_grad) * 1.5);
+		normal_edge = smoothstep(normal_threshold, normal_threshold + n_smooth, normal_grad);
 	}
 
 	// 3. Детекция глубины методом расстояния до касательной плоскости (Tangent-Plane Distance)
@@ -102,7 +103,8 @@ void fragment() {
 		// Адаптивный порог: точный на близких дистанциях (оружие) и устойчивый к погрешностям буфера глубины на 30+ м
 		float dist_to_cam = max(-p_c.z, 0.2);
 		float depth_thresh = clamp(depth_base_threshold + depth_distance_factor * dist_to_cam, 0.008, 0.12);
-		depth_edge = smoothstep(depth_thresh, depth_thresh + depth_smoothing, max_plane_dist);
+		float d_smooth = max(depth_smoothing, fwidth(max_plane_dist) * 1.5);
+		depth_edge = smoothstep(depth_thresh, depth_thresh + d_smooth, max_plane_dist);
 	}
 
 	// 4. Сглаженный силуэт против неба (Reverse-Z: глубина неба <= 0.00001)

@@ -93,6 +93,7 @@ static func get_shared_material(base_color: Color) -> StandardMaterial3D:
 	trail_color.a = _TRAIL_PEAK_ALPHA
 	mat.albedo_color = trail_color
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	mat.metallic_specular = 0.0
 	mat.emission_enabled = true
 	mat.emission = base_color

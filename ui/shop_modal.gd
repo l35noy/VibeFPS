@@ -158,11 +158,38 @@ func _build_ui_if_needed() -> void:
 		_cards_container.add_child(card)
 
 
+## Загрузка ресурса WeaponData из канонической папки data/weapons/
+func _load_weapon_resource(w_id: String) -> WeaponData:
+	var path := "res://data/weapons/%s.tres" % w_id
+	if ResourceLoader.exists(path):
+		var res := load(path) as WeaponData
+		if res != null and res.is_valid():
+			return res
+	return null
+
+
 ## Создание карточки оружия
 func _create_weapon_card(data: Dictionary) -> Control:
 	var w_id: String = data["id"]
 	var w_name: String = data["name"]
 	var w_price: int = data["price"]
+
+	var dmg_text: String = str(data["damage"])
+	var rpm_text: String = str(data["rpm"])
+	var mag_text: String = str(data["mag"])
+	var rld_text: String = str(data["reload"])
+
+	var res := _load_weapon_resource(w_id)
+	if res != null:
+		if res.price > 0:
+			w_price = res.price
+		if res.pellets > 1:
+			dmg_text = "%d (%d×%d)" % [int(round(res.damage * res.pellets)), res.pellets, int(round(res.damage))]
+		else:
+			dmg_text = "%d" % int(round(res.damage))
+		rpm_text = "%d" % int(round(res.rounds_per_minute))
+		mag_text = "%d" % res.magazine_size
+		rld_text = "%.1f с" % res.reload_time
 
 	var card_panel := PanelContainer.new()
 	card_panel.name = "Card_" + w_id
@@ -207,28 +234,28 @@ func _create_weapon_card(data: Dictionary) -> Control:
 
 	var damage_lbl := Label.new()
 	damage_lbl.name = "DamageLabel"
-	damage_lbl.text = "Урон: %s" % data["damage"]
+	damage_lbl.text = "Урон: %s" % dmg_text
 	damage_lbl.add_theme_font_size_override("font_size", 14)
 	damage_lbl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1.0))
 	specs_vbox.add_child(damage_lbl)
 
 	var rpm_lbl := Label.new()
 	rpm_lbl.name = "RpmLabel"
-	rpm_lbl.text = "Темп: %s выстр/мин" % data["rpm"]
+	rpm_lbl.text = "Темп: %s выстр/мин" % rpm_text
 	rpm_lbl.add_theme_font_size_override("font_size", 14)
 	rpm_lbl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1.0))
 	specs_vbox.add_child(rpm_lbl)
 
 	var mag_lbl := Label.new()
 	mag_lbl.name = "MagLabel"
-	mag_lbl.text = "Обойма: %s" % data["mag"]
+	mag_lbl.text = "Обойма: %s" % mag_text
 	mag_lbl.add_theme_font_size_override("font_size", 14)
 	mag_lbl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1.0))
 	specs_vbox.add_child(mag_lbl)
 
 	var reload_lbl := Label.new()
 	reload_lbl.name = "ReloadLabel"
-	reload_lbl.text = "Перезарядка: %s" % data["reload"]
+	reload_lbl.text = "Перезарядка: %s" % rld_text
 	reload_lbl.add_theme_font_size_override("font_size", 14)
 	reload_lbl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1.0))
 	specs_vbox.add_child(reload_lbl)

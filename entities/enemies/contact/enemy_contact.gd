@@ -78,6 +78,7 @@ var _has_landed: bool = false
 var _current_cube_y: float = 1.0
 var _cube_velocity_y: float = 0.0
 var _material: StandardMaterial3D = null
+var _hit_flash_timer: float = 0.0
 var _cached_player: Node3D = null
 var _last_target_position: Vector3 = Vector3.INF
 var _nav_update_timer: float = 0.0
@@ -170,8 +171,16 @@ func take_damage(amount: float) -> void:
 	_health = maxf(_health - amount, 0.0)
 	health_changed.emit(_health, _max_health)
 	if _health > 0.0:
+		_trigger_hit_flash()
 		return
 	_die()
+
+
+func _trigger_hit_flash() -> void:
+	if _material == null:
+		return
+	_hit_flash_timer = 0.07
+	_material.albedo_color = Color(0.15, 0.15, 0.15)
 
 
 func _physics_process(delta: float) -> void:
@@ -193,6 +202,13 @@ func _physics_process(delta: float) -> void:
 			set_physics_process(false)
 			queue_free()
 		return
+
+	if _hit_flash_timer > 0.0:
+		_hit_flash_timer -= delta
+		if _hit_flash_timer <= 0.0:
+			_hit_flash_timer = 0.0
+			if _material != null:
+				_material.albedo_color = data.color if data != null else Color(0.92, 0.92, 0.94)
 
 	# Режим парения: вертикальная координата с синусоидальным покачиванием
 	_apply_hover(delta)

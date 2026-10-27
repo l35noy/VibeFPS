@@ -31,6 +31,7 @@ var _contact_active: bool = false
 var _contact_accumulator: float = 0.0
 var _ranged_timer: float = 0.0
 var _enraged: bool = false
+var _hit_flash_timer: float = 0.0
 
 var _cached_player: Node3D = null
 var _last_target_position: Vector3 = Vector3.INF
@@ -104,6 +105,7 @@ func take_damage(amount: float) -> void:
 	# Фаза ярости при здоровье <= 50%
 	if not _enraged and _health <= _max_health * 0.5:
 		_enraged = true
+		_ranged_timer = ranged_attack_interval
 		if _material != null:
 			_material.emission_enabled = true
 			_material.emission = Color(1.0, 0.2, 0.2)
@@ -111,6 +113,15 @@ func take_damage(amount: float) -> void:
 
 	if _health <= 0.0:
 		_die()
+	else:
+		_trigger_hit_flash()
+
+
+func _trigger_hit_flash() -> void:
+	if _material == null:
+		return
+	_hit_flash_timer = 0.07
+	_material.albedo_color = Color(0.15, 0.15, 0.15)
 
 
 func _physics_process(delta: float) -> void:
@@ -120,6 +131,13 @@ func _physics_process(delta: float) -> void:
 			set_physics_process(false)
 			queue_free()
 		return
+
+	if _hit_flash_timer > 0.0:
+		_hit_flash_timer -= delta
+		if _hit_flash_timer <= 0.0:
+			_hit_flash_timer = 0.0
+			if _material != null:
+				_material.albedo_color = data.color if data != null else Color(0.92, 0.92, 0.94)
 
 	_apply_gravity(delta)
 	_steer_to_player(delta)

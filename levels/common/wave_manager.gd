@@ -282,8 +282,8 @@ func _complete_location() -> void:
 		if gs.has_method("unlock_location"):
 			gs.unlock_location("arena_02")
 
-	if _ui != null and _ui.has_method("show_victory"):
-		_ui.call("show_victory")
+	if _ui != null and _ui.has_method("show_location_cleared"):
+		_ui.call("show_location_cleared")
 
 	location_cleared.emit()
 

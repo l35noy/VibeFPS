@@ -65,10 +65,36 @@ func is_open() -> bool:
 	return _open
 
 
+## Проверка, открыто ли другое модальное окно интерфейса (ShopModal, VictoryPanel, DefeatPanel и др.)
+func _is_another_modal_open() -> bool:
+	var parent_ui := get_parent()
+	if parent_ui != null:
+		var shop := parent_ui.get_node_or_null("ShopModal")
+		if shop != null and shop.has_method("is_open") and bool(shop.call("is_open")):
+			return true
+		var victory := parent_ui.get_node_or_null("VictoryPanel") as CanvasItem
+		if victory != null and victory.visible:
+			return true
+		var defeat := parent_ui.get_node_or_null("DefeatPanel") as CanvasItem
+		if defeat != null and defeat.visible:
+			return true
+	var tree := get_tree()
+	if tree != null:
+		var modals := tree.get_nodes_in_group("modal_ui")
+		for modal in modals:
+			if modal == self:
+				continue
+			if modal.has_method("is_open") and bool(modal.call("is_open")):
+				return true
+			if (modal is CanvasItem) and (modal as CanvasItem).visible:
+				return true
+	return false
+
+
 ## Открыть: показать панель, отпустить курсор, построить кнопки. Повторное
-## открытие ничего не делает.
+## открытие ничего не делает. Если открыто другое модальное окно, открытие блокируется.
 func open() -> void:
-	if _open:
+	if _open or _is_another_modal_open():
 		return
 	_open = true
 	visible = true

@@ -20,13 +20,15 @@ signal died()
 const _LAYER_WORLD := 1 << 0
 const _LAYER_ENEMY_BODY := 1 << 2
 const _DEATH_COLOR := Color(0.5, 0.5, 0.5)
-const _DEATH_LINGER := 0.2
+const _DEATH_LINGER := 0.6
 
+var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _health: float = 0.0
 var _max_health: float = 0.0
 var _dying: bool = false
 var _death_timer: float = 0.0
 var _shoot_timer: float = 0.0
+var _hit_flash_timer: float = 0.0
 var _cached_player: Node3D = null
 var _material: StandardMaterial3D
 
@@ -89,6 +91,15 @@ func take_damage(amount: float) -> void:
 	health_changed.emit(_health, _max_health)
 	if _health <= 0.0:
 		_die()
+	else:
+		_trigger_hit_flash()
+
+
+func _trigger_hit_flash() -> void:
+	if _material == null:
+		return
+	_hit_flash_timer = 0.07
+	_material.albedo_color = Color(0.15, 0.15, 0.15)
 
 
 func _physics_process(delta: float) -> void:
@@ -97,7 +108,22 @@ func _physics_process(delta: float) -> void:
 		if _death_timer <= 0.0:
 			set_physics_process(false)
 			queue_free()
+			return
+		velocity.x = 0.0
+		velocity.z = 0.0
+		if not is_on_floor():
+			velocity.y -= _gravity * delta
+		else:
+			velocity.y = 0.0
+		move_and_slide()
 		return
+
+	if _hit_flash_timer > 0.0:
+		_hit_flash_timer -= delta
+		if _hit_flash_timer <= 0.0:
+			_hit_flash_timer = 0.0
+			if _material != null:
+				_material.albedo_color = data.color if data != null else Color(0.92, 0.92, 0.94)
 
 	var target := _player()
 	if target == null or not is_alive():
@@ -193,10 +219,12 @@ func _shoot(target: Node3D) -> void:
 
 func _die() -> void:
 	_dying = true
-	velocity = Vector3.ZERO
+	velocity.x = 0.0
+	velocity.z = 0.0
 	if _material != null:
 		_material.albedo_color = _DEATH_COLOR
 	_disable_collisions()
+	collision_mask = _LAYER_WORLD
 	_death_timer = _DEATH_LINGER
 	died.emit()
 	var gs := get_node_or_null("/root/GameState") as GameState

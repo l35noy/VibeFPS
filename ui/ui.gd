@@ -350,6 +350,12 @@ func clear_wave_display() -> void:
 		_wave_label.text = ""
 
 
+## Сообщение о зачистке локации и открытии портала выхода.
+func show_location_cleared() -> void:
+	if _wave_label != null:
+		_wave_label.text = "ЛОКАЦИЯ ЗАЧИЩЕНА! ПОРТАЛ ВЫХОДА ОТКРЫТ"
+
+
 func show_boss_bar(boss_name: String, current: float, maximum: float) -> void:
 	if _boss_container != null:
 		_boss_container.visible = true

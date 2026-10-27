@@ -39,6 +39,7 @@ func try_fire() -> bool:
 	_current -= 1
 	_cooldown = data.seconds_between_shots()
 
+	_apply_visual_recoil()
 	fired.emit()
 	magazine_changed.emit(_current, data.magazine_size)
 	return true
@@ -55,7 +56,8 @@ func _spawn_pellet_burst() -> Array[Node3D]:
 
 	var muzzle := _muzzle()
 	var spawn := _spawn_point()
-	var base_dir := -muzzle.global_transform.basis.z.normalized()
+	var spawn_pos: Vector3 = spawn.global_position if spawn.is_inside_tree() else (global_position + (spawn.position if spawn != null else Vector3.ZERO))
+	var base_dir := _calculate_shot_direction(spawn_pos, muzzle)
 	var right := muzzle.global_transform.basis.x.normalized()
 	var up := muzzle.global_transform.basis.y.normalized()
 
@@ -98,7 +100,6 @@ func _spawn_pellet_burst() -> Array[Node3D]:
 			bullet.radius = data.projectile_radius
 			bullet.color = data.projectile_color
 
-		var spawn_pos: Vector3 = spawn.global_position if spawn.is_inside_tree() else (global_position + (spawn.position if spawn != null else Vector3.ZERO))
 		muzzle.add_child(projectile)
 		projectile.set_as_top_level(true)
 		projectile.global_position = spawn_pos

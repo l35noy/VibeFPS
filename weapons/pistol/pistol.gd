@@ -74,11 +74,17 @@ var _cooldown: float = 0.0
 ## отпускания. Подробность в _process().
 var _armed := false
 
+## Начальные локальные трансформации дочерних мешей для процедурной отдачи.
+var _mesh_initial_transforms: Dictionary = {}
+var _recoil_offset: Vector3 = Vector3.ZERO
+var _recoil_rotation: float = 0.0
+
 
 func _ready() -> void:
 	# Полный магазин при появлении оружия. magazine_changed здесь не
 	# испускается: HUD читает начальное состояние через current_mag().
 	_current = _capacity()
+	_cache_mesh_transforms()
 
 
 func _process(delta: float) -> void:
@@ -93,7 +99,20 @@ func _process(delta: float) -> void:
 			_reload_remaining = 0.0
 			_complete_reload()
 
-	# 3. Действие огня. try_fire() внутри спрашивает гейт ввода, поэтому
+	# 3. Процедурная отдача оружия: плавное возвращение дочерних мешей в покой
+	if _recoil_offset.length_squared() > 0.000001 or absf(_recoil_rotation) > 0.0001:
+		var decay := clampf(delta * 16.0, 0.0, 1.0)
+		_recoil_offset = _recoil_offset.lerp(Vector3.ZERO, decay)
+		_recoil_rotation = lerpf(_recoil_rotation, 0.0, decay)
+		for mesh in _mesh_initial_transforms:
+			if is_instance_valid(mesh):
+				var init_t: Transform3D = _mesh_initial_transforms[mesh]
+				var t := init_t
+				t.origin += _recoil_offset
+				t.basis = init_t.basis.rotated(Vector3.RIGHT, _recoil_rotation)
+				(mesh as MeshInstance3D).transform = t
+
+	# 4. Действие огня. try_fire() внутри спрашивает гейт ввода, поэтому
 	#    нажатая кнопка при отпущенном курсоре выстрела не даёт.
 	#
 	#    Защёлка взведения — обязательна перед выстрелом. Мышь захватывается
@@ -172,6 +191,7 @@ func try_fire() -> bool:
 		return false
 	_current -= 1
 	_cooldown = data.seconds_between_shots()
+	_apply_visual_recoil()
 	# Сигналы после уменьшения: и fired, и magazine_changed наблюдаются уже с
 	# новым состоянием, поэтому слушатель никогда не прочитает устаревшее
 	# число патронов.
@@ -225,7 +245,29 @@ func reset_for_scene_change() -> void:
 	# на прошлой сцене, не должна выстрелить в новой раньше, чем игрок её
 	# отпустит.
 	_armed = false
+	_recoil_offset = Vector3.ZERO
+	_recoil_rotation = 0.0
+	for mesh in _mesh_initial_transforms:
+		if is_instance_valid(mesh):
+			(mesh as MeshInstance3D).transform = _mesh_initial_transforms[mesh]
 	magazine_changed.emit(_current, _capacity())
+
+
+func _cache_mesh_transforms() -> void:
+	_mesh_initial_transforms.clear()
+	for child in get_children():
+		if child is MeshInstance3D:
+			_mesh_initial_transforms[child] = (child as MeshInstance3D).transform
+
+
+func _apply_visual_recoil() -> void:
+	if _mesh_initial_transforms.is_empty():
+		_cache_mesh_transforms()
+	if _mesh_initial_transforms.is_empty():
+		return
+	# Легкий импульс отдачи назад и подброс вверх
+	_recoil_offset.z = minf(_recoil_offset.z + 0.035, 0.07)
+	_recoil_rotation = minf(_recoil_rotation + deg_to_rad(3.0), deg_to_rad(6.0))
 
 
 # --------------------------------------------------------------------------
@@ -282,6 +324,51 @@ func _spawn_point() -> Node3D:
 	return _muzzle()
 
 
+## Вычисляет направление выстрела со сведением в точку прицела камеры (устранение параллакса).
+func _calculate_shot_direction(spawn_pos: Vector3, muzzle: Node3D) -> Vector3:
+	var fallback_dir: Vector3 = -muzzle.global_transform.basis.z.normalized()
+	# Если задан специальный источник прицеливания (например, в изолированных тестах без камеры),
+	# используем прямое направление этого источника
+	if fire_rate_source != null and not (fire_rate_source is Camera3D):
+		return fallback_dir
+
+	var viewport := get_viewport()
+	if viewport == null:
+		return fallback_dir
+	var camera := viewport.get_camera_3d()
+	if not is_instance_valid(camera) or not camera.is_inside_tree():
+		return fallback_dir
+
+	var world_3d := camera.get_world_3d()
+	if world_3d == null:
+		return fallback_dir
+	var space_state := world_3d.direct_space_state
+	if space_state == null:
+		return fallback_dir
+
+	# Если точка старта снаряда совпадает с положением камеры (например, нет узла Muzzle)
+	if spawn_pos.distance_squared_to(camera.global_position) < 0.001:
+		return fallback_dir
+
+	var cam_pos: Vector3 = camera.global_position
+	var cam_forward: Vector3 = -camera.global_transform.basis.z.normalized()
+	var ray_end: Vector3 = cam_pos + cam_forward * 100.0
+
+	var query := PhysicsRayQueryParameters3D.create(cam_pos, ray_end)
+	# Маска: мир (слой 1) + хитбокс врага (слой 4)
+	query.collision_mask = (1 << 0) | (1 << 3)
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+
+	var hit := space_state.intersect_ray(query)
+	var target_point: Vector3 = hit.position if not hit.is_empty() else ray_end
+
+	var to_target: Vector3 = target_point - spawn_pos
+	if to_target.length_squared() < 0.0001:
+		return fallback_dir
+	return to_target.normalized()
+
+
 ## Снаряд из `projectile_scene` или `null`, если выстрела не будет.
 ##
 ## Порядок обязателен, и каждая строка в нём load-bearing: узел добавляется в
@@ -312,10 +399,9 @@ func _instantiate_projectile() -> Node3D:
 	var muzzle := _muzzle()
 	# Точка старта и направление — два разных узла (см. _spawn_point()).
 	var spawn := _spawn_point()
-	# Передняя ось источника, а не ось мира: пистолет поворачивается вместе с
-	# игроком, и снаряд должен уходить туда, куда он направлен. Читается один
-	# раз — после этого направление у снаряда своё.
-	var direction := -muzzle.global_transform.basis.z
+	var spawn_pos: Vector3 = spawn.global_position if spawn.is_inside_tree() else (global_position + (spawn.position if spawn != null else Vector3.ZERO))
+	# Базовое направление с расчётом сведения в прицел (устранение параллакса)
+	var direction := _calculate_shot_direction(spawn_pos, muzzle)
 	muzzle.add_child(projectile)
 	# Отвязка от трансформа родителя — вторая часть фикса SHOOT-1 (первая, выше,
 	# это точка старта). У Node3D мировой трансформ = global(родителя) * local,
@@ -331,7 +417,6 @@ func _instantiate_projectile() -> Node3D:
 	# Мировая позиция ставится ПОСЛЕ отвязки: у top_level-ноды это уже абсолютная
 	# точка, а до отвязки та же запись пересчитала бы локальную позицию прежнего
 	# родителя.
-	var spawn_pos: Vector3 = spawn.global_position if spawn.is_inside_tree() else (global_position + (spawn.position if spawn != null else Vector3.ZERO))
 	projectile.global_position = spawn_pos
 	projectile.call("launch", direction)
 	return projectile
